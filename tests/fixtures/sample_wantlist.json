@@ -1,0 +1,7 @@
+[
+    {"artist": "Radiohead", "album": "OK Computer", "format": "Vinyl"},
+    {"artist": "Miles Davis", "album": "Kind of Blue", "year": 1959, "notes": "Original pressing"},
+    {"artist": "Nirvana", "album": "Nevermind", "format": "CD", "year": 1991},
+    {"artist": "The Beatles", "album": "Abbey Road", "format": "LP", "year": 1969},
+    {"artist": "Pink Floyd", "album": "The Dark Side of the Moon", "format": "record"}
+]

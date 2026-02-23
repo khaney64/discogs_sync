@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.discogs.com)",
+      "WebSearch",
+      "WebFetch(domain:discogs.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:python3-discogs-client.readthedocs.io)",
+      "WebFetch(domain:decodo.com)",
+      "Bash(pip show:*)",
+      "Bash(pip3 show:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(discogs-sync:*)"
+    ]
+  }
+}
