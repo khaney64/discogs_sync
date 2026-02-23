@@ -5,34 +5,34 @@ allowed-tools: Bash, Read, Write, Glob, Grep
 
 # Discogs Sync Tool
 
-You have access to the `discogs-sync` CLI tool for managing Discogs wantlists, collections, and searching marketplace pricing.
+You have access to the `python discogs-sync.py` CLI tool for managing Discogs wantlists, collections, and searching marketplace pricing.
 
 ## Available Commands
 
 ### Authentication
-- `discogs-sync whoami --output-format json` — Check authenticated user
+- `python discogs-sync.py whoami --output-format json` — Check authenticated user
 
 ### Wantlist
-- `discogs-sync wantlist list --output-format json` — List all wantlist items
-- `discogs-sync wantlist add --artist "ARTIST" --album "ALBUM" [--format Vinyl|CD|Cassette]` — Add to wantlist
-- `discogs-sync wantlist add --release-id ID` — Add by release ID
-- `discogs-sync wantlist add --master-id ID` — Add by master ID
-- `discogs-sync wantlist remove --artist "ARTIST" --album "ALBUM"` — Remove from wantlist
-- `discogs-sync wantlist remove --release-id ID` — Remove by release ID
-- `discogs-sync wantlist sync FILE [--dry-run] [--remove-extras] --output-format json` — Batch sync from CSV/JSON
+- `python discogs-sync.py wantlist list --output-format json` — List all wantlist items
+- `python discogs-sync.py wantlist add --artist "ARTIST" --album "ALBUM" [--format Vinyl|CD|Cassette]` — Add to wantlist
+- `python discogs-sync.py wantlist add --release-id ID` — Add by release ID
+- `python discogs-sync.py wantlist add --master-id ID` — Add by master ID
+- `python discogs-sync.py wantlist remove --artist "ARTIST" --album "ALBUM"` — Remove from wantlist
+- `python discogs-sync.py wantlist remove --release-id ID` — Remove by release ID
+- `python discogs-sync.py wantlist sync FILE [--dry-run] [--remove-extras] --output-format json` — Batch sync from CSV/JSON
 
 ### Collection
-- `discogs-sync collection list [--folder-id 0] --output-format json` — List collection
-- `discogs-sync collection add --artist "ARTIST" --album "ALBUM" [--format Vinyl] [--allow-duplicate]` — Add to collection
-- `discogs-sync collection add --release-id ID [--folder-id 1]` — Add by release ID
-- `discogs-sync collection remove --artist "ARTIST" --album "ALBUM"` — Remove from collection
-- `discogs-sync collection remove --release-id ID` — Remove by release ID
-- `discogs-sync collection sync FILE [--dry-run] [--remove-extras] --output-format json` — Batch sync
+- `python discogs-sync.py collection list [--folder-id 0] --output-format json` — List collection
+- `python discogs-sync.py collection add --artist "ARTIST" --album "ALBUM" [--format Vinyl] [--allow-duplicate]` — Add to collection
+- `python discogs-sync.py collection add --release-id ID [--folder-id 1]` — Add by release ID
+- `python discogs-sync.py collection remove --artist "ARTIST" --album "ALBUM"` — Remove from collection
+- `python discogs-sync.py collection remove --release-id ID` — Remove by release ID
+- `python discogs-sync.py collection sync FILE [--dry-run] [--remove-extras] --output-format json` — Batch sync
 
 ### Marketplace
-- `discogs-sync marketplace search --artist "ARTIST" --album "ALBUM" [--format Vinyl] [--min-price N] [--max-price N] --output-format json` — Search pricing
-- `discogs-sync marketplace search --master-id ID [--format Vinyl] --output-format json` — Search by master ID
-- `discogs-sync marketplace search FILE [--format Vinyl] [--max-price N] --output-format json` — Batch search
+- `python discogs-sync.py marketplace search --artist "ARTIST" --album "ALBUM" [--format Vinyl] [--min-price N] [--max-price N] --output-format json` — Search pricing
+- `python discogs-sync.py marketplace search --master-id ID [--format Vinyl] --output-format json` — Search by master ID
+- `python discogs-sync.py marketplace search FILE [--format Vinyl] [--max-price N] --output-format json` — Batch search
 
 ## Input File Formats
 

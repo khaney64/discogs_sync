@@ -23,11 +23,21 @@ pytest --cov=discogs_sync
 
 Build backend is `setuptools.build_meta` (not `setuptools.backends._legacy:_Backend`).
 
+## Running Without pip install
+
+`discogs-sync.py` at the project root is a thin entry point that bootstraps `sys.path` and calls `cli.main()`. No pip install required:
+
+```bash
+python discogs-sync.py wantlist list --output-format json
+```
+
+This is the invocation style used by the OpenClaw skill (`SKILL.md`).
+
 ## Architecture
 
 ```
 CLI (cli.py) → Click command groups
-  ├── auth.py / config.py / client_factory.py  → OAuth + token storage
+  ├── auth.py / config.py / client_factory.py  → OAuth + personal token + credential storage
   ├── sync_wantlist.py / sync_collection.py    → add/remove/list/sync
   ├── marketplace.py                           → pricing via master versions
   ├── search.py                                → multi-pass release matching
@@ -66,6 +76,13 @@ Both follow the same three-step pattern:
 1. Resolve each `InputRecord` → `release_id` via search
 2. Fetch current items from Discogs API (paginated)
 3. Diff target vs current → add missing, skip existing, optionally remove extras
+
+Duplicate detection uses a three-tier check:
+1. **release_id match** — exact release_id already in collection/wantlist
+2. **master_id match** — same master_id (different pressing of same album)
+3. **Fuzzy match** — artist similarity ≥ 0.85 AND title similarity ≥ 0.85 (catches cases where API response lacks master_id but the album is clearly the same)
+
+The fuzzy match uses `_similarity()` from `search.py` (`difflib.SequenceMatcher`, case-insensitive). Threshold constant: `FUZZY_MATCH_THRESHOLD = 0.85` in both sync modules.
 
 Each item produces a `SyncAction` (ADD/REMOVE/SKIP/ERROR). Individual failures don't abort the batch. `SyncReport` aggregates actions and computes exit code (0=success, 1=partial, 2=complete failure).
 

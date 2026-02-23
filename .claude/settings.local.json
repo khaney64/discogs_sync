@@ -11,7 +11,8 @@
       "Bash(pip3 show:*)",
       "Bash(pip install:*)",
       "Bash(python -m pytest:*)",
-      "Bash(discogs-sync:*)"
+      "Bash(discogs-sync:*)",
+      "Bash(python:*)"
     ]
   }
 }

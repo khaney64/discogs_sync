@@ -185,3 +185,8 @@ def print_warning(message: str) -> None:
 def print_info(message: str) -> None:
     """Print an info message to stderr."""
     error_console.print(f"[blue]Info:[/blue] {message}")
+
+
+def print_verbose(message: str) -> None:
+    """Print a verbose/debug message to stderr."""
+    error_console.print(f"[dim][verbose][/dim] {message}")

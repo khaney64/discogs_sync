@@ -23,7 +23,7 @@ class TestSyncWantlist:
             title="OK Computer", artist="Radiohead", matched=True, score=0.9,
         )
         mock_resolve.return_value = 123
-        mock_get_ids.return_value = set()  # empty wantlist
+        mock_get_ids.return_value = (set(), set(), [])  # empty wantlist
 
         client = MagicMock()
         report = sync_wantlist(client, [record])
@@ -45,7 +45,7 @@ class TestSyncWantlist:
             title="OK Computer", artist="Radiohead", matched=True, score=0.9,
         )
         mock_resolve.return_value = 123
-        mock_get_ids.return_value = {123}  # already in wantlist
+        mock_get_ids.return_value = ({123}, {3425}, [("Radiohead", "OK Computer", 123)])  # already in wantlist
 
         client = MagicMock()
         report = sync_wantlist(client, [record])
@@ -63,7 +63,7 @@ class TestSyncWantlist:
         mock_search.return_value = SearchResult(
             input_record=record, matched=False, error="No match found",
         )
-        mock_get_ids.return_value = set()
+        mock_get_ids.return_value = (set(), set(), [])
 
         client = MagicMock()
         report = sync_wantlist(client, [record])
@@ -83,7 +83,7 @@ class TestSyncWantlist:
             input_record=record, release_id=123, matched=True, score=0.9,
         )
         mock_resolve.return_value = 123
-        mock_get_ids.return_value = set()
+        mock_get_ids.return_value = (set(), set(), [])
 
         client = MagicMock()
         report = sync_wantlist(client, [record], dry_run=True)
@@ -106,7 +106,7 @@ class TestSyncWantlist:
             input_record=record, release_id=123, matched=True, score=0.9,
         )
         mock_resolve.return_value = 123
-        mock_get_ids.return_value = {123, 456}  # 456 is extra
+        mock_get_ids.return_value = ({123, 456}, {3425, 9999}, [("Radiohead", "OK Computer", 123), ("Pink Floyd", "Animals", 456)])  # 456 is extra
 
         client = MagicMock()
         report = sync_wantlist(client, [record], remove_extras=True)
@@ -120,7 +120,7 @@ class TestAddToWantlist:
     @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
     def test_add_by_release_id(self, mock_get_ids, mock_add):
         """Adding by release_id directly."""
-        mock_get_ids.return_value = set()
+        mock_get_ids.return_value = (set(), set(), [])
         client = MagicMock()
 
         action = add_to_wantlist(client, release_id=123)
@@ -131,7 +131,7 @@ class TestAddToWantlist:
     @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
     def test_skip_duplicate(self, mock_get_ids):
         """Should skip if already in wantlist."""
-        mock_get_ids.return_value = {123}
+        mock_get_ids.return_value = ({123}, {3425}, [("Radiohead", "OK Computer", 123)])
         client = MagicMock()
 
         action = add_to_wantlist(client, release_id=123)
@@ -145,7 +145,7 @@ class TestRemoveFromWantlist:
     @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
     def test_remove_existing(self, mock_get_ids, mock_remove):
         """Removing an item that exists."""
-        mock_get_ids.return_value = {123}
+        mock_get_ids.return_value = ({123}, {3425}, [("Radiohead", "OK Computer", 123)])
         client = MagicMock()
 
         action = remove_from_wantlist(client, release_id=123)
@@ -156,10 +156,177 @@ class TestRemoveFromWantlist:
     @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
     def test_remove_nonexistent(self, mock_get_ids):
         """Removing an item not in wantlist should skip."""
-        mock_get_ids.return_value = set()
+        mock_get_ids.return_value = (set(), set(), [])
         client = MagicMock()
 
         action = remove_from_wantlist(client, release_id=123)
 
         assert action.action == SyncActionType.SKIP
         assert "Not in wantlist" in action.reason
+
+
+class TestMasterIdMatching:
+    """Tests for master_id-based duplicate detection in wantlist sync."""
+
+    @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
+    @patch("discogs_sync.sync_wantlist.resolve_to_release_id")
+    @patch("discogs_sync.sync_wantlist.search_release")
+    def test_skip_when_different_pressing_in_wantlist(self, mock_search, mock_resolve, mock_get_ids):
+        """Different release_id but same master_id should SKIP."""
+        from discogs_sync.models import SearchResult
+
+        record = InputRecord(artist="Radiohead", album="OK Computer")
+        mock_search.return_value = SearchResult(
+            input_record=record, release_id=123, master_id=3425,
+            title="OK Computer", artist="Radiohead", matched=True, score=0.9,
+        )
+        mock_resolve.return_value = 123
+        # Wantlist has release_id=999 (different pressing) but same master_id=3425
+        mock_get_ids.return_value = ({999}, {3425}, [("Radiohead", "OK Computer", 999)])
+
+        client = MagicMock()
+        report = sync_wantlist(client, [record])
+
+        assert report.skipped == 1
+        assert report.added == 0
+
+    @patch("discogs_sync.sync_wantlist._add_to_wantlist")
+    @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
+    @patch("discogs_sync.sync_wantlist.resolve_to_release_id")
+    @patch("discogs_sync.sync_wantlist.search_release")
+    def test_add_when_no_master_id_match(self, mock_search, mock_resolve, mock_get_ids, mock_add):
+        """Different release_id and different master_id should ADD."""
+        from discogs_sync.models import SearchResult
+
+        record = InputRecord(artist="Radiohead", album="OK Computer")
+        mock_search.return_value = SearchResult(
+            input_record=record, release_id=123, master_id=3425,
+            title="OK Computer", artist="Radiohead", matched=True, score=0.9,
+        )
+        mock_resolve.return_value = 123
+        # Wantlist has a completely different master and different artist/title
+        mock_get_ids.return_value = ({999}, {8888}, [("Pink Floyd", "Animals", 999)])
+
+        client = MagicMock()
+        report = sync_wantlist(client, [record])
+
+        assert report.added == 1
+        assert report.skipped == 0
+        mock_add.assert_called_once()
+
+    @patch("discogs_sync.sync_wantlist._add_to_wantlist")
+    @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
+    @patch("discogs_sync.sync_wantlist.resolve_to_release_id")
+    @patch("discogs_sync.sync_wantlist.search_release")
+    def test_add_when_result_has_no_master_id(self, mock_search, mock_resolve, mock_get_ids, mock_add):
+        """When search result has no master_id and no fuzzy match, should ADD."""
+        from discogs_sync.models import SearchResult
+
+        record = InputRecord(artist="Radiohead", album="OK Computer")
+        mock_search.return_value = SearchResult(
+            input_record=record, release_id=123, master_id=None,
+            title="OK Computer", artist="Radiohead", matched=True, score=0.9,
+        )
+        mock_resolve.return_value = 123
+        # Wantlist has a different album entirely (no release_id, master_id, or fuzzy match)
+        mock_get_ids.return_value = ({999}, {3425}, [("Pink Floyd", "Animals", 999)])
+
+        client = MagicMock()
+        report = sync_wantlist(client, [record])
+
+        assert report.added == 1
+        assert report.skipped == 0
+
+    @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
+    def test_add_to_wantlist_skip_by_master_id(self, mock_get_ids):
+        """add_to_wantlist should skip when master_id matches even if release_id differs."""
+        # Wantlist has release 999 with master 3425
+        mock_get_ids.return_value = ({999}, {3425}, [("Radiohead", "OK Computer", 999)])
+        client = MagicMock()
+
+        action = add_to_wantlist(client, release_id=123, master_id=3425)
+
+        assert action.action == SyncActionType.SKIP
+        assert "Already in wantlist" in action.reason
+
+
+class TestFuzzyMatching:
+    """Tests for fuzzy artist+title duplicate detection in wantlist sync."""
+
+    @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
+    @patch("discogs_sync.sync_wantlist.resolve_to_release_id")
+    @patch("discogs_sync.sync_wantlist.search_release")
+    def test_skip_fuzzy_match_different_release_no_master(self, mock_search, mock_resolve, mock_get_ids):
+        """Different release_id, no master_id, but matching artist+title should SKIP via fuzzy match."""
+        from discogs_sync.models import SearchResult
+
+        record = InputRecord(artist="The Alan Parsons Project", album="I Robot")
+        mock_search.return_value = SearchResult(
+            input_record=record, release_id=456, master_id=None,
+            title="I Robot", artist="The Alan Parsons Project", matched=True, score=0.9,
+        )
+        mock_resolve.return_value = 456
+        mock_get_ids.return_value = ({789}, set(), [("The Alan Parsons Project", "I Robot", 789)])
+
+        client = MagicMock()
+        report = sync_wantlist(client, [record])
+
+        assert report.skipped == 1
+        assert report.added == 0
+        assert "fuzzy match" in report.actions[0].reason
+
+    @patch("discogs_sync.sync_wantlist._add_to_wantlist")
+    @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
+    @patch("discogs_sync.sync_wantlist.resolve_to_release_id")
+    @patch("discogs_sync.sync_wantlist.search_release")
+    def test_add_when_no_fuzzy_match(self, mock_search, mock_resolve, mock_get_ids, mock_add):
+        """Different release_id, no master_id, different artist+title should ADD."""
+        from discogs_sync.models import SearchResult
+
+        record = InputRecord(artist="Supertramp", album="Breakfast In America")
+        mock_search.return_value = SearchResult(
+            input_record=record, release_id=456, master_id=None,
+            title="Breakfast In America", artist="Supertramp", matched=True, score=0.9,
+        )
+        mock_resolve.return_value = 456
+        mock_get_ids.return_value = ({789}, set(), [("Pink Floyd", "Dark Side of the Moon", 789)])
+
+        client = MagicMock()
+        report = sync_wantlist(client, [record])
+
+        assert report.added == 1
+        assert report.skipped == 0
+        mock_add.assert_called_once()
+
+    @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
+    @patch("discogs_sync.sync_wantlist.resolve_to_release_id")
+    @patch("discogs_sync.sync_wantlist.search_release")
+    def test_skip_fuzzy_match_slight_title_variation(self, mock_search, mock_resolve, mock_get_ids):
+        """Slight title case variation should still fuzzy match and SKIP."""
+        from discogs_sync.models import SearchResult
+
+        record = InputRecord(artist="Supertramp", album="Breakfast in America")
+        mock_search.return_value = SearchResult(
+            input_record=record, release_id=456, master_id=None,
+            title="Breakfast in America", artist="Supertramp", matched=True, score=0.9,
+        )
+        mock_resolve.return_value = 456
+        mock_get_ids.return_value = ({789}, set(), [("Supertramp", "Breakfast In America", 789)])
+
+        client = MagicMock()
+        report = sync_wantlist(client, [record])
+
+        assert report.skipped == 1
+        assert report.added == 0
+        assert "fuzzy match" in report.actions[0].reason
+
+    @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
+    def test_add_to_wantlist_skip_by_fuzzy_match(self, mock_get_ids):
+        """add_to_wantlist should skip via fuzzy match when release_id/master_id don't match."""
+        mock_get_ids.return_value = ({789}, set(), [("Quincy Jones", "The Dude", 789)])
+        client = MagicMock()
+
+        action = add_to_wantlist(client, release_id=456, artist="Quincy Jones", album="The Dude")
+
+        assert action.action == SyncActionType.SKIP
+        assert "fuzzy match" in action.reason

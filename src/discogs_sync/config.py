@@ -1,4 +1,4 @@
-"""Token and configuration persistence."""
+"""Credential and configuration persistence."""
 
 from __future__ import annotations
 
@@ -36,13 +36,38 @@ def save_config(config: dict) -> None:
         raise ConfigError(f"Failed to write config file {path}: {e}") from e
 
 
-def get_tokens() -> dict | None:
-    """Return stored OAuth tokens, or None if not configured."""
+def get_auth_mode() -> str:
+    """Return the configured auth mode ('token' or 'oauth'). Defaults to 'token'."""
     config = load_config()
+    return config.get("auth_mode", "oauth" if config.get("access_token") else "token")
+
+
+def get_tokens() -> dict | None:
+    """Return stored credentials, or None if not configured.
+
+    Supports both personal access token and OAuth modes.
+    Legacy configs (no auth_mode key) are treated as OAuth.
+    """
+    config = load_config()
+    auth_mode = config.get("auth_mode")
+
+    # Token mode
+    if auth_mode == "token":
+        user_token = config.get("user_token")
+        if user_token:
+            return {
+                "auth_mode": "token",
+                "user_token": user_token,
+                "username": config.get("username"),
+            }
+        return None
+
+    # OAuth mode (explicit or legacy config without auth_mode)
     token = config.get("access_token")
     secret = config.get("access_token_secret")
     if token and secret:
         return {
+            "auth_mode": "oauth",
             "access_token": token,
             "access_token_secret": secret,
             "consumer_key": config.get("consumer_key", ""),
@@ -63,6 +88,7 @@ def save_tokens(
     config = load_config()
     config.update(
         {
+            "auth_mode": "oauth",
             "consumer_key": consumer_key,
             "consumer_secret": consumer_secret,
             "access_token": access_token,
@@ -73,9 +99,27 @@ def save_tokens(
     save_config(config)
 
 
-def clear_tokens() -> None:
-    """Remove stored OAuth tokens."""
+def save_user_token(user_token: str, username: str | None = None) -> None:
+    """Store a personal access token to config file."""
     config = load_config()
-    for key in ["access_token", "access_token_secret", "username"]:
+    config.update(
+        {
+            "auth_mode": "token",
+            "user_token": user_token,
+            "username": username,
+        }
+    )
+    save_config(config)
+
+
+def clear_tokens() -> None:
+    """Remove all stored credentials (both token and OAuth)."""
+    config = load_config()
+    for key in [
+        "auth_mode", "user_token",
+        "access_token", "access_token_secret",
+        "consumer_key", "consumer_secret",
+        "username",
+    ]:
         config.pop(key, None)
     save_config(config)

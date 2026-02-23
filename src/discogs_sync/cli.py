@@ -19,13 +19,23 @@ def main():
 
 
 @main.command()
-def auth():
-    """Run OAuth authentication flow."""
-    from .auth import run_auth_flow
+@click.option("--mode", type=click.Choice(["token", "oauth"]), default="token",
+              help="Auth method: 'token' for personal access token (default), 'oauth' for OAuth 1.0a flow")
+def auth(mode):
+    """Authenticate with Discogs.
+
+    Default mode uses a personal access token (generate at discogs.com/settings/developers).
+    Use --mode oauth for the full OAuth 1.0a flow with consumer key/secret.
+    """
     from .output import console, print_error
 
     try:
-        result = run_auth_flow()
+        if mode == "token":
+            from .auth import run_token_auth_flow
+            result = run_token_auth_flow()
+        else:
+            from .auth import run_auth_flow
+            result = run_auth_flow()
         username = result.get("username", "unknown")
         console.print(f"[green]Authenticated successfully as {username}[/green]")
     except AuthenticationError as e:
@@ -65,8 +75,9 @@ def wantlist():
 @click.option("--remove-extras", is_flag=True, help="Remove wantlist items not in input file")
 @click.option("--dry-run", is_flag=True, help="Show what would be done without making changes")
 @click.option("--threshold", type=float, default=0.7, help="Match score threshold (0.0-1.0)")
+@click.option("--verbose", is_flag=True, help="Print debug information during sync")
 @click.option("--output-format", type=click.Choice(["table", "json"]), default="table")
-def wantlist_sync(file, remove_extras, dry_run, threshold, output_format):
+def wantlist_sync(file, remove_extras, dry_run, threshold, verbose, output_format):
     """Batch sync wantlist from CSV/JSON file."""
     from .client_factory import build_client
     from .output import output_sync_report, print_error
@@ -76,7 +87,7 @@ def wantlist_sync(file, remove_extras, dry_run, threshold, output_format):
     try:
         records = parse_file(file)
         client = build_client()
-        report = sync_wantlist(client, records, remove_extras=remove_extras, dry_run=dry_run, threshold=threshold)
+        report = sync_wantlist(client, records, remove_extras=remove_extras, dry_run=dry_run, threshold=threshold, verbose=verbose)
         output_sync_report(report, output_format)
         sys.exit(report.exit_code)
     except DiscogsSyncError as e:
@@ -180,8 +191,9 @@ def collection():
 @click.option("--remove-extras", is_flag=True, help="Remove collection items not in input file")
 @click.option("--dry-run", is_flag=True, help="Show what would be done without making changes")
 @click.option("--threshold", type=float, default=0.7, help="Match score threshold (0.0-1.0)")
+@click.option("--verbose", is_flag=True, help="Print debug information during sync")
 @click.option("--output-format", type=click.Choice(["table", "json"]), default="table")
-def collection_sync(file, folder_id, remove_extras, dry_run, threshold, output_format):
+def collection_sync(file, folder_id, remove_extras, dry_run, threshold, verbose, output_format):
     """Batch sync collection from CSV/JSON file."""
     from .client_factory import build_client
     from .output import output_sync_report, print_error
@@ -194,6 +206,7 @@ def collection_sync(file, folder_id, remove_extras, dry_run, threshold, output_f
         report = sync_collection(
             client, records, folder_id=folder_id,
             remove_extras=remove_extras, dry_run=dry_run, threshold=threshold,
+            verbose=verbose,
         )
         output_sync_report(report, output_format)
         sys.exit(report.exit_code)
