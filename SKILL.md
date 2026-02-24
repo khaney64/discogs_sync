@@ -7,12 +7,26 @@ description: >
   from their Discogs wantlist or collection, check what's on their wantlist, look up
   marketplace prices, or find what a record is selling for. Also supports bulk operations
   via CSV/JSON file input.
-metadata: {"openclaw":{"emoji":"🎵","requires":{"bins":["python3"]}}}
+metadata: {"openclaw":{"emoji":"🎵","requires":{"bins":["python3","pip3"]}}}
 ---
 
 # Discogs Sync — Wantlist, Collection & Marketplace CLI
 
 Add and remove albums from your Discogs wantlist or collection, search marketplace pricing, and list what you have. Identify albums by artist/album name, Discogs master ID, or release ID. For bulk operations, pass a CSV or JSON file.
+
+## Prerequisites
+
+Python 3.10+ and the following packages are required:
+
+```bash
+pip install -r requirements.txt
+```
+
+Or install directly:
+
+```bash
+pip install "python3-discogs-client>=2.8" "click>=8.1" "rich>=13.0"
+```
 
 ## Quick Start
 
@@ -330,3 +344,4 @@ When using `--master-id` or `--release-id`, no search is needed — the ID is us
 - Use `--dry-run` before any sync to preview what would change. This makes no API writes.
 - The `--remove-extras` flag on sync commands will remove items from your wantlist/collection that are not in the input file. Use with caution.
 - Collection allows multiple instances of the same release (e.g., two copies of the same LP). By default, `collection add` skips duplicates with a message. Use `--allow-duplicate` to add another copy.
+- Credentials in `~/.discogs-sync/config.json` contain your Discogs tokens. On Linux/macOS, restrict permissions: `chmod 600 ~/.discogs-sync/config.json`. Revoke tokens at https://www.discogs.com/settings/developers if compromised.

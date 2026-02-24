@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from .exceptions import ConfigError
@@ -32,6 +33,9 @@ def save_config(config: dict) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+        # Restrict permissions to owner-only on non-Windows platforms
+        if sys.platform != "win32":
+            path.chmod(0o600)
     except OSError as e:
         raise ConfigError(f"Failed to write config file {path}: {e}") from e
 

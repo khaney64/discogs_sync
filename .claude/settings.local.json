@@ -14,7 +14,8 @@
       "Bash(discogs-sync:*)",
       "Bash(python:*)",
       "Bash(python3:*)",
-      "Bash(more:*)"
+      "Bash(more:*)",
+      "Bash(ls -la \"C:\\\\development\\\\ai\\\\discogs\\\\.claude\"\" 2>/dev/null || echo \".claude directory not found \")"
     ]
   }
 }
