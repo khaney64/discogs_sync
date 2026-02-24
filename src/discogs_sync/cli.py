@@ -98,6 +98,8 @@ def wantlist_sync(file, remove_extras, dry_run, threshold, verbose, output_forma
         client = build_client()
         report = sync_wantlist(client, records, remove_extras=remove_extras, dry_run=dry_run, threshold=threshold, verbose=verbose)
         output_sync_report(report, output_format)
+        from .cache import invalidate_cache
+        invalidate_cache("wantlist")
         sys.exit(report.exit_code)
     except DiscogsSyncError as e:
         print_error(str(e))
@@ -132,6 +134,8 @@ def wantlist_add(artist, album, fmt, master_id, release_id, threshold, output_fo
         report = SyncReport(total_input=1)
         report.add_action(action)
         output_sync_report(report, output_format)
+        from .cache import invalidate_cache
+        invalidate_cache("wantlist")
         sys.exit(report.exit_code)
     except DiscogsSyncError as e:
         print_error(str(e))
@@ -163,6 +167,8 @@ def wantlist_remove(artist, album, release_id, threshold, output_format):
         report = SyncReport(total_input=1)
         report.add_action(action)
         output_sync_report(report, output_format)
+        from .cache import invalidate_cache
+        invalidate_cache("wantlist")
         sys.exit(report.exit_code)
     except DiscogsSyncError as e:
         print_error(str(e))
@@ -171,16 +177,26 @@ def wantlist_remove(artist, album, release_id, threshold, output_format):
 
 @wantlist.command("list")
 @click.option("--search", default=None, help="Filter by artist or title (case-insensitive)")
+@click.option("--no-cache", is_flag=True, default=False, help="Bypass cache and fetch fresh data (cache is still updated)")
 @click.option("--output-format", type=click.Choice(["table", "json"]), default="table")
-def wantlist_list(search, output_format):
+def wantlist_list(search, no_cache, output_format):
     """List all wantlist items."""
+    from .cache import read_cache, write_cache
     from .client_factory import build_client
+    from .models import WantlistItem
     from .output import output_wantlist, print_error
     from .sync_wantlist import list_wantlist
 
     try:
-        client = build_client()
-        items = list_wantlist(client)
+        items = None
+        if not no_cache:
+            cached = read_cache("wantlist")
+            if cached is not None:
+                items = [WantlistItem.from_dict(d) for d in cached]
+        if items is None:
+            client = build_client()
+            items = list_wantlist(client)
+            write_cache("wantlist", [i.to_dict() for i in items])
         if search:
             items = [i for i in items if _matches_search(i, search)]
         items.sort(key=lambda i: ((i.artist or "").lower(), (i.title or "").lower()))
@@ -222,6 +238,8 @@ def collection_sync(file, folder_id, remove_extras, dry_run, threshold, verbose,
             verbose=verbose,
         )
         output_sync_report(report, output_format)
+        from .cache import invalidate_cache
+        invalidate_cache("collection")
         sys.exit(report.exit_code)
     except DiscogsSyncError as e:
         print_error(str(e))
@@ -259,6 +277,8 @@ def collection_add(artist, album, fmt, master_id, release_id, folder_id, allow_d
         report = SyncReport(total_input=1)
         report.add_action(action)
         output_sync_report(report, output_format)
+        from .cache import invalidate_cache
+        invalidate_cache("collection")
         sys.exit(report.exit_code)
     except DiscogsSyncError as e:
         print_error(str(e))
@@ -290,6 +310,8 @@ def collection_remove(artist, album, release_id, threshold, output_format):
         report = SyncReport(total_input=1)
         report.add_action(action)
         output_sync_report(report, output_format)
+        from .cache import invalidate_cache
+        invalidate_cache("collection")
         sys.exit(report.exit_code)
     except DiscogsSyncError as e:
         print_error(str(e))
@@ -299,16 +321,28 @@ def collection_remove(artist, album, release_id, threshold, output_format):
 @collection.command("list")
 @click.option("--search", default=None, help="Filter by artist or title (case-insensitive)")
 @click.option("--folder-id", type=int, default=0, help="Folder ID (default: 0 All)")
+@click.option("--no-cache", is_flag=True, default=False, help="Bypass cache and fetch fresh data (cache is still updated)")
 @click.option("--output-format", type=click.Choice(["table", "json"]), default="table")
-def collection_list(search, folder_id, output_format):
+def collection_list(search, folder_id, no_cache, output_format):
     """List collection items."""
+    from .cache import read_cache, write_cache
     from .client_factory import build_client
+    from .models import CollectionItem
     from .output import output_collection, print_error
     from .sync_collection import list_collection
 
     try:
-        client = build_client()
-        items = list_collection(client, folder_id=folder_id)
+        items = None
+        is_cacheable = folder_id == 0
+        if is_cacheable and not no_cache:
+            cached = read_cache("collection")
+            if cached is not None:
+                items = [CollectionItem.from_dict(d) for d in cached]
+        if items is None:
+            client = build_client()
+            items = list_collection(client, folder_id=folder_id)
+            if is_cacheable:
+                write_cache("collection", [i.to_dict() for i in items])
         if search:
             items = [i for i in items if _matches_search(i, search)]
         items.sort(key=lambda i: ((i.artist or "").lower(), (i.title or "").lower()))

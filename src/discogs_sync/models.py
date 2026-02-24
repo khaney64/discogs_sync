@@ -179,6 +179,18 @@ class WantlistItem:
     year: int | None = None
     notes: str | None = None
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "WantlistItem":
+        return cls(
+            release_id=d["release_id"],
+            master_id=d.get("master_id"),
+            title=d.get("title"),
+            artist=d.get("artist"),
+            format=d.get("format"),
+            year=d.get("year"),
+            notes=d.get("notes"),
+        )
+
     def to_dict(self) -> dict:
         return {
             "release_id": self.release_id,
@@ -203,6 +215,19 @@ class CollectionItem:
     artist: str | None = None
     format: str | None = None
     year: int | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "CollectionItem":
+        return cls(
+            instance_id=d["instance_id"],
+            release_id=d["release_id"],
+            master_id=d.get("master_id"),
+            folder_id=d.get("folder_id", 1),
+            title=d.get("title"),
+            artist=d.get("artist"),
+            format=d.get("format"),
+            year=d.get("year"),
+        )
 
     def to_dict(self) -> dict:
         return {

@@ -95,7 +95,7 @@ discogs-sync wantlist remove --artist "Radiohead" --album "OK Computer"
 discogs-sync wantlist remove --release-id 7890
 
 # List current wantlist
-discogs-sync wantlist list [--output-format json]
+discogs-sync wantlist list [--search "radiohead"] [--no-cache] [--output-format json]
 ```
 
 ### Collection
@@ -114,7 +114,7 @@ discogs-sync collection remove --artist "Radiohead" --album "OK Computer"
 discogs-sync collection remove --release-id 7890
 
 # List collection
-discogs-sync collection list [--folder-id 0] [--output-format json]
+discogs-sync collection list [--folder-id 0] [--search "miles"] [--no-cache] [--output-format json]
 ```
 
 ### Marketplace
@@ -153,6 +153,8 @@ discogs-sync marketplace search --artist "Radiohead" --album "OK Computer" --ver
 | `--remove-extras` | Remove items not in the input file |
 | `--folder-id` | Collection folder ID (default: 1 for adds, 0 for reads) |
 | `--allow-duplicate` | Allow adding duplicate copies to collection |
+| `--search` | Client-side filter for `list` commands (case-insensitive substring match on artist, title, year) |
+| `--no-cache` | Bypass cache and fetch fresh data from Discogs (`list` commands only; cache is still updated) |
 
 ### Marketplace Options
 
@@ -167,6 +169,15 @@ discogs-sync marketplace search --artist "Radiohead" --album "OK Computer" --ver
 | `--max-versions` | Max versions to check per master (default: 25) |
 | `--details` | Include suggested prices by condition grade |
 | `--verbose` | Show detailed progress and API call logging |
+
+## Caching
+
+`wantlist list` and `collection list` cache fetched results locally for **1 hour** to avoid redundant API calls when re-running with different `--search` filters.
+
+- Cache files are stored in `~/.discogs-sync/` as `wantlist_cache.json` and `collection_cache.json`.
+- The collection cache only applies when `--folder-id` is the default (`0` / All). Non-default folder IDs always fetch live.
+- Any `add`, `remove`, or `sync` command automatically invalidates the relevant cache.
+- Pass `--no-cache` to force a fresh fetch. The result is still written to cache so the next call benefits.
 
 ## Release Matching
 

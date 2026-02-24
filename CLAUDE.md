@@ -43,6 +43,7 @@ CLI (cli.py) → Click command groups
   ├── search.py                                → multi-pass release matching
   ├── parsers.py                               → CSV/JSON input parsing
   ├── rate_limiter.py                          → proactive throttling
+  ├── cache.py                                 → TTL file cache for list results
   └── output.py                                → Rich tables + JSON dual-mode
 ```
 
@@ -93,6 +94,20 @@ Collection differs from wantlist: uses folder_id (default 1 for adds, 0 for read
 All commands support `--output-format table|json`. The `output.py` module provides per-entity formatters (`output_wantlist`, `output_collection`, `output_marketplace`, `output_sync_report`). JSON mode writes to stdout; Rich tables and status messages write to stderr via `error_console`.
 
 The `wantlist list` and `collection list` commands support `--search` for client-side filtering (case-insensitive substring match against artist, title, and year). The Discogs API doesn't support server-side filtering on these endpoints, so all items are fetched first, then filtered by `_matches_search()` in `cli.py`.
+
+### Caching
+
+`wantlist list` and `collection list` use a file-based TTL cache (1 hour) stored in `~/.discogs-sync/` alongside `config.json`:
+
+- **`wantlist_cache.json`** — cached wantlist items
+- **`collection_cache.json`** — cached collection items (folder 0 / All only; non-zero `--folder-id` always fetches live)
+
+Cache logic lives in `cache.py` and exposes three functions used by `cli.py`:
+- `read_cache(name)` → `list[dict] | None` — returns items if age < 3600s, else `None`
+- `write_cache(name, items)` — writes `{"cached_at": "<utc-iso>", "items": [...]}` to disk (non-fatal on failure)
+- `invalidate_cache(name)` — deletes the cache file (silent no-op if absent)
+
+All mutating commands (`add`, `remove`, `sync`) call `invalidate_cache()` after completing. `--no-cache` skips the cache read but still writes fresh results back. `WantlistItem` and `CollectionItem` both have `from_dict()` classmethods to reconstruct typed objects from cached dicts.
 
 ## Key Conventions
 

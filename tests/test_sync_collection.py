@@ -308,6 +308,13 @@ class TestCollectionListSearch:
         CollectionItem(instance_id=3, release_id=30, artist="Miles Davis", title="Bitches Brew"),
     ]
 
+    @pytest.fixture(autouse=True)
+    def patch_cache(self):
+        """Prevent real cache reads/writes during list command tests."""
+        with patch("discogs_sync.cache.read_cache", return_value=None), \
+             patch("discogs_sync.cache.write_cache"):
+            yield
+
     @patch("discogs_sync.sync_collection.list_collection", return_value=ITEMS)
     @patch("discogs_sync.client_factory.build_client")
     def test_search_matches_artist(self, _mock_client, _mock_list):
@@ -351,3 +358,75 @@ class TestCollectionListSearch:
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["total"] == 3
+
+    @patch("discogs_sync.sync_collection.list_collection", return_value=ITEMS)
+    @patch("discogs_sync.client_factory.build_client")
+    def test_cache_hit_skips_api(self, _mock_client, mock_list):
+        """When cache has a valid hit, list_collection should not be called."""
+        cached_dicts = [i.to_dict() for i in self.ITEMS]
+        with patch("discogs_sync.cache.read_cache", return_value=cached_dicts), \
+             patch("discogs_sync.cache.write_cache") as mock_write:
+            runner = CliRunner()
+            result = runner.invoke(main, ["collection", "list", "--output-format", "json"])
+        assert result.exit_code == 0
+        mock_list.assert_not_called()
+        mock_write.assert_not_called()
+        data = json.loads(result.output)
+        assert data["total"] == 3
+
+    @patch("discogs_sync.sync_collection.list_collection", return_value=ITEMS)
+    @patch("discogs_sync.client_factory.build_client")
+    def test_no_cache_flag_bypasses_read_but_writes(self, _mock_client, mock_list):
+        """--no-cache forces API call and still updates the cache."""
+        with patch("discogs_sync.cache.read_cache") as mock_read, \
+             patch("discogs_sync.cache.write_cache") as mock_write:
+            runner = CliRunner()
+            result = runner.invoke(main, ["collection", "list", "--no-cache", "--output-format", "json"])
+        assert result.exit_code == 0
+        mock_read.assert_not_called()
+        mock_list.assert_called_once()
+        mock_write.assert_called_once()
+
+    @patch("discogs_sync.sync_collection.list_collection", return_value=ITEMS)
+    @patch("discogs_sync.client_factory.build_client")
+    def test_non_zero_folder_id_skips_cache(self, _mock_client, mock_list):
+        """Non-default folder-id should bypass cache entirely (no read or write)."""
+        with patch("discogs_sync.cache.read_cache") as mock_read, \
+             patch("discogs_sync.cache.write_cache") as mock_write:
+            runner = CliRunner()
+            result = runner.invoke(main, ["collection", "list", "--folder-id", "1", "--output-format", "json"])
+        assert result.exit_code == 0
+        mock_read.assert_not_called()
+        mock_write.assert_not_called()
+
+
+class TestCollectionCacheInvalidation:
+    """Tests that mutating collection commands invalidate the cache."""
+
+    @patch("discogs_sync.cache.invalidate_cache")
+    @patch("discogs_sync.sync_collection.add_to_collection")
+    @patch("discogs_sync.client_factory.build_client")
+    def test_add_invalidates_cache(self, _mock_client, mock_add, mock_invalidate):
+        """collection add should call invalidate_cache('collection')."""
+        from discogs_sync.models import SyncAction, SyncActionType
+        mock_add.return_value = SyncAction(
+            action=SyncActionType.ADD, release_id=456, artist="Miles Davis", title="Kind of Blue",
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["collection", "add", "--release-id", "456"])
+        assert result.exit_code == 0
+        mock_invalidate.assert_called_once_with("collection")
+
+    @patch("discogs_sync.cache.invalidate_cache")
+    @patch("discogs_sync.sync_collection.remove_from_collection")
+    @patch("discogs_sync.client_factory.build_client")
+    def test_remove_invalidates_cache(self, _mock_client, mock_remove, mock_invalidate):
+        """collection remove should call invalidate_cache('collection')."""
+        from discogs_sync.models import SyncAction, SyncActionType
+        mock_remove.return_value = SyncAction(
+            action=SyncActionType.REMOVE, release_id=456, artist="Miles Davis", title="Kind of Blue",
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["collection", "remove", "--release-id", "456"])
+        assert result.exit_code == 0
+        mock_invalidate.assert_called_once_with("collection")

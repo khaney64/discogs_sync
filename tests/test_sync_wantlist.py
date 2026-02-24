@@ -344,6 +344,13 @@ class TestWantlistListSearch:
         WantlistItem(release_id=3, artist="Radiohead", title="Kid A"),
     ]
 
+    @pytest.fixture(autouse=True)
+    def patch_cache(self):
+        """Prevent real cache reads/writes during list command tests."""
+        with patch("discogs_sync.cache.read_cache", return_value=None), \
+             patch("discogs_sync.cache.write_cache"):
+            yield
+
     @patch("discogs_sync.sync_wantlist.list_wantlist", return_value=ITEMS)
     @patch("discogs_sync.client_factory.build_client")
     def test_search_matches_artist(self, _mock_client, _mock_list):
@@ -387,3 +394,75 @@ class TestWantlistListSearch:
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["total"] == 3
+
+    @patch("discogs_sync.sync_wantlist.list_wantlist", return_value=ITEMS)
+    @patch("discogs_sync.client_factory.build_client")
+    def test_cache_hit_skips_api(self, _mock_client, mock_list):
+        """When cache has a valid hit, list_wantlist should not be called."""
+        cached_dicts = [i.to_dict() for i in self.ITEMS]
+        with patch("discogs_sync.cache.read_cache", return_value=cached_dicts), \
+             patch("discogs_sync.cache.write_cache") as mock_write:
+            runner = CliRunner()
+            result = runner.invoke(main, ["wantlist", "list", "--output-format", "json"])
+        assert result.exit_code == 0
+        mock_list.assert_not_called()
+        mock_write.assert_not_called()
+        data = json.loads(result.output)
+        assert data["total"] == 3
+
+    @patch("discogs_sync.sync_wantlist.list_wantlist", return_value=ITEMS)
+    @patch("discogs_sync.client_factory.build_client")
+    def test_no_cache_flag_bypasses_read_but_writes(self, _mock_client, mock_list):
+        """--no-cache forces API call and still updates the cache."""
+        with patch("discogs_sync.cache.read_cache") as mock_read, \
+             patch("discogs_sync.cache.write_cache") as mock_write:
+            runner = CliRunner()
+            result = runner.invoke(main, ["wantlist", "list", "--no-cache", "--output-format", "json"])
+        assert result.exit_code == 0
+        mock_read.assert_not_called()
+        mock_list.assert_called_once()
+        mock_write.assert_called_once()
+
+    @patch("discogs_sync.sync_wantlist.list_wantlist", return_value=ITEMS)
+    @patch("discogs_sync.client_factory.build_client")
+    def test_cache_miss_calls_api_and_writes(self, _mock_client, mock_list):
+        """On a cache miss, list_wantlist is called and result is written to cache."""
+        with patch("discogs_sync.cache.read_cache", return_value=None), \
+             patch("discogs_sync.cache.write_cache") as mock_write:
+            runner = CliRunner()
+            result = runner.invoke(main, ["wantlist", "list", "--output-format", "json"])
+        assert result.exit_code == 0
+        mock_list.assert_called_once()
+        mock_write.assert_called_once()
+
+
+class TestWantlistCacheInvalidation:
+    """Tests that mutating wantlist commands invalidate the cache."""
+
+    @patch("discogs_sync.cache.invalidate_cache")
+    @patch("discogs_sync.sync_wantlist.add_to_wantlist")
+    @patch("discogs_sync.client_factory.build_client")
+    def test_add_invalidates_cache(self, _mock_client, mock_add, mock_invalidate):
+        """wantlist add should call invalidate_cache('wantlist')."""
+        from discogs_sync.models import SyncAction, SyncActionType
+        mock_add.return_value = SyncAction(
+            action=SyncActionType.ADD, release_id=123, artist="Radiohead", title="OK Computer",
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["wantlist", "add", "--release-id", "123"])
+        assert result.exit_code == 0
+        mock_invalidate.assert_called_once_with("wantlist")
+
+    @patch("discogs_sync.cache.invalidate_cache")
+    @patch("discogs_sync.sync_wantlist.remove_from_wantlist")
+    @patch("discogs_sync.client_factory.build_client")
+    def test_remove_invalidates_cache(self, _mock_client, mock_remove, mock_invalidate):
+        """wantlist remove should call invalidate_cache('wantlist')."""
+        from discogs_sync.models import SyncAction, SyncActionType
+        mock_remove.return_value = SyncAction(
+            action=SyncActionType.REMOVE, release_id=123, artist="Radiohead", title="OK Computer",
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["wantlist", "remove", "--release-id", "123"])
+        assert result.exit_code == 0
+        mock_invalidate.assert_called_once_with("wantlist")
