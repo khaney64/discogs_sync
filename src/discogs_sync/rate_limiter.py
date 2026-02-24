@@ -29,8 +29,11 @@ class RateLimiter:
             except (ValueError, TypeError):
                 pass
 
-    def wait_if_needed(self) -> None:
-        """Block until it's safe to make the next request."""
+    def wait_if_needed(self, verbose: bool = False, description: str = "") -> float:
+        """Block until it's safe to make the next request.
+
+        Returns the actual wait time in seconds.
+        """
         with self._lock:
             now = time.monotonic()
             elapsed = now - self._last_request_time
@@ -38,16 +41,24 @@ class RateLimiter:
             # Determine required interval
             if self._remaining is not None and self._remaining <= self.CRITICAL_THRESHOLD:
                 required = self.PAUSE_DURATION
+                reason = f"critical (remaining={self._remaining})"
             elif self._remaining is not None and self._remaining <= self.LOW_THRESHOLD:
                 required = self.SLOW_INTERVAL
+                reason = f"low (remaining={self._remaining})"
             else:
                 required = self.MIN_INTERVAL
+                reason = "normal"
 
             wait_time = required - elapsed
             if wait_time > 0:
+                if verbose and wait_time > self.MIN_INTERVAL:
+                    from .output import print_verbose
+                    desc = f" for {description}" if description else ""
+                    print_verbose(f"Rate limiter: waiting {wait_time:.1f}s{desc} [{reason}]")
                 time.sleep(wait_time)
 
             self._last_request_time = time.monotonic()
+            return max(wait_time, 0.0)
 
     @property
     def remaining(self) -> int | None:

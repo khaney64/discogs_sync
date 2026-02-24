@@ -121,13 +121,19 @@ discogs-sync collection list [--folder-id 0] [--output-format json]
 
 ```bash
 # Search by artist/album
-discogs-sync marketplace search --artist "Radiohead" --album "OK Computer" [--format Vinyl] [--min-price 10] [--max-price 50] [--currency USD] [--output-format json]
+discogs-sync marketplace search --artist "Radiohead" --album "OK Computer" [--format Vinyl] [--country US] [--min-price 10] [--max-price 50] [--currency USD] [--output-format json]
 
 # Search by master ID
-discogs-sync marketplace search --master-id 3425 [--format Vinyl]
+discogs-sync marketplace search --master-id 3425 [--format Vinyl] [--country US]
+
+# Search by specific release ID (skips master version scan)
+discogs-sync marketplace search --release-id 7890
 
 # Batch search from file
-discogs-sync marketplace search <file> [--format Vinyl] [--min-price N] [--max-price N] [--currency USD] [--max-versions 25] [--output-format json]
+discogs-sync marketplace search <file> [--format Vinyl] [--country US] [--min-price N] [--max-price N] [--currency USD] [--max-versions 25] [--output-format json]
+
+# Show detailed progress / condition grade prices
+discogs-sync marketplace search --artist "Radiohead" --album "OK Computer" --verbose --details
 ```
 
 ## Options
@@ -153,10 +159,14 @@ discogs-sync marketplace search <file> [--format Vinyl] [--min-price N] [--max-p
 | Option | Description |
 |--------|-------------|
 | `--format` | Filter versions by format (Vinyl, CD) |
+| `--country` | Filter by country of pressing (exact match: US, UK, Germany, etc.) |
+| `--release-id` | Fetch stats for a specific release (bypasses master version scan) |
 | `--min-price` | Minimum price filter |
 | `--max-price` | Maximum price filter |
 | `--currency` | Currency code (default: USD) |
 | `--max-versions` | Max versions to check per master (default: 25) |
+| `--details` | Include suggested prices by condition grade |
+| `--verbose` | Show detailed progress and API call logging |
 
 ## Release Matching
 

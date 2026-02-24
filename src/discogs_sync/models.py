@@ -132,9 +132,15 @@ class MarketplaceResult:
     num_for_sale: int = 0
     lowest_price: float | None = None
     currency: str = "USD"
+    price_suggestions: dict[str, float] | None = None
+    label: str | None = None
+    catno: str | None = None
+    format_details: str | None = None
+    community_have: int | None = None
+    community_want: int | None = None
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "master_id": self.master_id,
             "release_id": self.release_id,
             "title": self.title,
@@ -146,6 +152,19 @@ class MarketplaceResult:
             "lowest_price": self.lowest_price,
             "currency": self.currency,
         }
+        if self.price_suggestions is not None:
+            d["price_suggestions"] = self.price_suggestions
+        if self.label is not None:
+            d["label"] = self.label
+        if self.catno is not None:
+            d["catno"] = self.catno
+        if self.format_details is not None:
+            d["format_details"] = self.format_details
+        if self.community_have is not None:
+            d["community_have"] = self.community_have
+        if self.community_want is not None:
+            d["community_want"] = self.community_want
+        return d
 
 
 @dataclass

@@ -130,13 +130,19 @@ Duplicate check: by default, `add` skips if the release is already in the collec
 
 ```bash
 # Search by artist/album name
-python discogs-sync.py marketplace search --artist "Radiohead" --album "OK Computer" [--format Vinyl] [--output-format json]
+python discogs-sync.py marketplace search --artist "Radiohead" --album "OK Computer" [--format Vinyl] [--country US] [--output-format json]
 
 # Search by master ID
-python discogs-sync.py marketplace search --master-id 3425 [--format Vinyl]
+python discogs-sync.py marketplace search --master-id 3425 [--format Vinyl] [--country US]
 
-# Filter by price range
-python discogs-sync.py marketplace search --artist "Pink Floyd" --album "The Dark Side of the Moon" --format Vinyl --min-price 10 --max-price 50 --currency USD
+# Search by specific release ID (skips master version scan)
+python discogs-sync.py marketplace search --release-id 7890
+
+# Filter by price range and country
+python discogs-sync.py marketplace search --artist "Pink Floyd" --album "The Dark Side of the Moon" --format Vinyl --country US --min-price 10 --max-price 50 --currency USD
+
+# Show detailed progress and condition grade price suggestions
+python discogs-sync.py marketplace search --artist "Radiohead" --album "OK Computer" --verbose --details
 ```
 
 Returns release versions sorted by lowest price, with number of copies for sale.
@@ -154,7 +160,7 @@ python discogs-sync.py wantlist sync albums.csv [--remove-extras] [--threshold 0
 python discogs-sync.py collection sync albums.csv [--folder-id 1] [--remove-extras] [--dry-run]
 
 # Batch marketplace search from file
-python discogs-sync.py marketplace search albums.csv [--format Vinyl] [--max-price 50] [--max-versions 25] [--output-format json]
+python discogs-sync.py marketplace search albums.csv [--format Vinyl] [--country US] [--max-price 50] [--max-versions 25] [--output-format json]
 ```
 
 **CSV format** (header row required, `artist` and `album` required):
@@ -186,10 +192,14 @@ Format synonyms are normalized automatically: `LP`/`record`/`12"` → Vinyl, `co
 | `--format` | add, marketplace search | Filter by format: Vinyl, CD, Cassette |
 | `--folder-id` | collection | Target folder (default: 1 for adds, 0 for reads) |
 | `--allow-duplicate` | collection add | Allow adding another copy of an album already in collection |
+| `--country` | marketplace search | Filter by country of pressing (exact match: US, UK, Germany, etc.) |
+| `--release-id` | marketplace search | Fetch stats for a specific release (bypasses master version scan) |
 | `--min-price` | marketplace | Minimum price filter |
 | `--max-price` | marketplace | Maximum price filter |
 | `--currency` | marketplace | Currency code (default: USD) |
 | `--max-versions` | marketplace | Max release versions to check per master (default: 25) |
+| `--details` | marketplace search | Include suggested prices by condition grade |
+| `--verbose` | sync, marketplace search | Show detailed progress and API call logging |
 | `--search` | list | Filter results by artist or title (case-insensitive substring) |
 | `--dry-run` | sync | Preview changes without modifying Discogs |
 | `--remove-extras` | sync | Remove wantlist/collection items not in the input file |

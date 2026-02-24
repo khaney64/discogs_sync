@@ -339,19 +339,32 @@ def _find_version_by_format(client, master, format_name: str, limiter) -> int | 
     return None
 
 
-def _api_call_with_retry(call, limiter, retries: int = MAX_RETRIES):
+def _api_call_with_retry(call, limiter, retries: int = MAX_RETRIES, verbose: bool = False, description: str = ""):
     """Execute an API call with rate limiting and retries."""
     last_error = None
+    desc = f" ({description})" if description else ""
     for attempt in range(retries):
-        limiter.wait_if_needed()
+        wait_info = limiter.wait_if_needed(verbose=verbose, description=description)
         try:
+            t0 = time.monotonic()
             result = call()
+            elapsed = time.monotonic() - t0
             # Try to extract headers for rate limit tracking
             if hasattr(result, "_response") and hasattr(result._response, "headers"):
                 limiter.update_from_headers(dict(result._response.headers))
+            if verbose and (elapsed > 2.0 or description):
+                remaining = limiter.remaining
+                from .output import print_verbose
+                print_verbose(f"API call{desc}: {elapsed:.1f}s (remaining={remaining})")
             return result
         except Exception as e:
             last_error = e
+            if verbose:
+                from .output import print_verbose
+                print_verbose(f"API call{desc} attempt {attempt + 1}/{retries} failed: {e}")
             if attempt < retries - 1:
+                if verbose:
+                    from .output import print_verbose
+                    print_verbose(f"  Retrying in {RETRY_DELAY}s...")
                 time.sleep(RETRY_DELAY)
     raise NetworkError(f"API call failed after {retries} retries: {last_error}") from last_error

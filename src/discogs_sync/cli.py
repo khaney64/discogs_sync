@@ -331,24 +331,28 @@ def marketplace():
 @click.option("--artist", help="Artist name")
 @click.option("--album", help="Album title")
 @click.option("--format", "fmt", help="Format filter (Vinyl, CD)")
+@click.option("--country", help="Country filter (exact match: US, UK, Germany, etc.)")
 @click.option("--master-id", type=int, help="Discogs master ID")
+@click.option("--release-id", type=int, help="Discogs release ID (drill down to specific release)")
 @click.option("--min-price", type=float, help="Minimum price filter")
 @click.option("--max-price", type=float, help="Maximum price filter")
 @click.option("--currency", default="USD", help="Currency code (default: USD)")
 @click.option("--max-versions", type=int, default=25, help="Max versions to check per master")
 @click.option("--threshold", type=float, default=0.7, help="Match score threshold")
+@click.option("--details", is_flag=True, help="Include suggested prices by condition grade")
+@click.option("--verbose", is_flag=True, help="Show detailed progress")
 @click.option("--output-format", type=click.Choice(["table", "json"]), default="table")
-def marketplace_search(file, artist, album, fmt, master_id, min_price, max_price, currency, max_versions, threshold, output_format):
+def marketplace_search(file, artist, album, fmt, country, master_id, release_id, min_price, max_price, currency, max_versions, threshold, details, verbose, output_format):
     """Search marketplace pricing.
 
-    Provide a CSV/JSON file for batch search, or use --artist/--album or --master-id for individual search.
+    Provide a CSV/JSON file for batch search, or use --artist/--album, --master-id, or --release-id for individual search.
     """
     from .client_factory import build_client
     from .output import output_marketplace, print_error, print_warning
     from .marketplace import search_marketplace, search_marketplace_batch
 
-    if not file and not master_id and not (artist and album):
-        print_error("Provide a file, --master-id, or both --artist and --album")
+    if not file and not master_id and not release_id and not (artist and album):
+        print_error("Provide a file, --master-id, --release-id, or both --artist and --album")
         sys.exit(2)
 
     try:
@@ -358,19 +362,21 @@ def marketplace_search(file, artist, album, fmt, master_id, min_price, max_price
             from .parsers import parse_file
             records = parse_file(file)
             results, errors = search_marketplace_batch(
-                client, records, format=fmt, min_price=min_price, max_price=max_price,
-                currency=currency, max_versions=max_versions, threshold=threshold,
+                client, records, format=fmt, country=country, min_price=min_price,
+                max_price=max_price, currency=currency, max_versions=max_versions,
+                threshold=threshold, details=details, verbose=verbose,
             )
             for err in errors:
                 print_warning(f"{err['artist']} - {err['album']}: {err['error']}")
         else:
             results = search_marketplace(
-                client, master_id=master_id, artist=artist, album=album,
-                format=fmt, min_price=min_price, max_price=max_price,
+                client, master_id=master_id, release_id=release_id, artist=artist, album=album,
+                format=fmt, country=country, min_price=min_price, max_price=max_price,
                 currency=currency, max_versions=max_versions, threshold=threshold,
+                details=details, verbose=verbose,
             )
 
-        output_marketplace(results, output_format)
+        output_marketplace(results, output_format, details=details)
     except DiscogsSyncError as e:
         print_error(str(e))
         sys.exit(2)

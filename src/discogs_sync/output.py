@@ -130,11 +130,23 @@ def output_collection(items: list, output_format: str = "table") -> None:
     console.print(f"\nTotal: {len(items)}")
 
 
-def output_marketplace(results: list, output_format: str = "table") -> None:
+def _format_condition_price(result, grade: str) -> str:
+    """Format a condition grade price for display."""
+    if result.price_suggestions and grade in result.price_suggestions:
+        return f"{result.price_suggestions[grade]:.2f}"
+    return "-"
+
+
+def output_marketplace(results: list, output_format: str = "table", details: bool = False) -> None:
     """Output marketplace search results."""
     if output_format == "json":
         output_json({"results": [r.to_dict() for r in results], "total": len(results)})
         return
+
+    # Check if any result has the extended detail fields (single-release lookup)
+    has_extended = any(r.label or r.catno or r.format_details or r.community_have is not None for r in results)
+    # Check if any result has price suggestions
+    has_price_suggestions = any(r.price_suggestions for r in results)
 
     table = Table(title="Marketplace Results")
     table.add_column("Master ID")
@@ -146,10 +158,20 @@ def output_marketplace(results: list, output_format: str = "table") -> None:
     table.add_column("Year")
     table.add_column("For Sale", justify="right")
     table.add_column("Lowest Price", justify="right")
+    if details and has_extended:
+        table.add_column("Label")
+        table.add_column("Cat #")
+        table.add_column("Format Details")
+        table.add_column("Have", justify="right")
+        table.add_column("Want", justify="right")
+    if details and has_price_suggestions:
+        table.add_column("NM", justify="right")
+        table.add_column("VG+", justify="right")
+        table.add_column("VG", justify="right")
     for r in results:
         price_str = f"{r.lowest_price:.2f} {r.currency}" if r.lowest_price is not None else "N/A"
-        table.add_row(
-            str(r.master_id or ""),
+        row = [str(r.master_id or "")]
+        row.extend([
             str(r.release_id or ""),
             r.artist or "",
             r.title or "",
@@ -158,7 +180,22 @@ def output_marketplace(results: list, output_format: str = "table") -> None:
             str(r.year or ""),
             str(r.num_for_sale),
             price_str,
-        )
+        ])
+        if details and has_extended:
+            row.extend([
+                r.label or "",
+                r.catno or "",
+                r.format_details or "",
+                str(r.community_have) if r.community_have is not None else "",
+                str(r.community_want) if r.community_want is not None else "",
+            ])
+        if details and has_price_suggestions:
+            row.extend([
+                _format_condition_price(r, "Near Mint (NM or M-)"),
+                _format_condition_price(r, "Very Good Plus (VG+)"),
+                _format_condition_price(r, "Very Good (VG)"),
+            ])
+        table.add_row(*row)
     console.print(table)
     console.print(f"\nTotal: {len(results)}")
 
