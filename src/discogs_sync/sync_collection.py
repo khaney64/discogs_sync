@@ -14,6 +14,7 @@ from .models import (
     SyncReport,
 )
 from .output import print_verbose
+from .parsers import extract_artist_from_data
 from .rate_limiter import get_rate_limiter
 from .search import (
     _api_call_with_retry,
@@ -315,11 +316,8 @@ def list_collection(
                 release = item.release if hasattr(item, "release") else item
                 data = release.data if hasattr(release, "data") else {}
 
-                title = data.get("title", "")
-                artist_name = ""
-                album_name = title
-                if " - " in title:
-                    artist_name, album_name = title.split(" - ", 1)
+                artist_name = extract_artist_from_data(data)
+                album_name = data.get("title", "")
 
                 fmt = None
                 formats = data.get("formats", [])
@@ -405,11 +403,8 @@ def _get_collection_release_ids(client, folder_id: int, limiter) -> tuple[dict[i
                     instance_id = item.data.get("instance_id", instance_id)
                 if rid:
                     mapping.setdefault(rid, []).append(instance_id)
-                    title = data.get("title", "")
-                    artist_name = ""
-                    album_name = title
-                    if " - " in title:
-                        artist_name, album_name = title.split(" - ", 1)
+                    artist_name = extract_artist_from_data(data)
+                    album_name = data.get("title", "")
                     items_info.append((artist_name, album_name, rid))
                 mid = data.get("master_id")
                 if mid:

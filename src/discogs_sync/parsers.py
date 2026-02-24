@@ -38,6 +38,36 @@ def normalize_format(fmt: str | None) -> str | None:
     return fmt.strip()
 
 
+def extract_artist_from_data(data: dict) -> str:
+    """Extract artist name from Discogs API release data.
+
+    The API provides artists as a list of dicts with 'name' and 'join' keys.
+    Artist names may include disambiguation suffixes like '(4)' which are stripped.
+    """
+    import re
+
+    artists = data.get("artists", [])
+    if not artists or not isinstance(artists, list):
+        return ""
+    parts = []
+    for i, a in enumerate(artists):
+        if not isinstance(a, dict):
+            continue
+        name = a.get("anv") or a.get("name", "")
+        # Strip Discogs disambiguation suffix, e.g. "John Williams (4)" -> "John Williams"
+        name = re.sub(r"\s*\(\d+\)$", "", name)
+        parts.append(name)
+        if i < len(artists) - 1:
+            join = a.get("join", "").strip()
+            if join and join != ",":
+                parts.append(f" {join} ")
+            elif join == ",":
+                parts.append(", ")
+            else:
+                parts.append(", ")
+    return "".join(parts)
+
+
 def parse_file(filepath: str | Path) -> list[InputRecord]:
     """Parse an input file (CSV or JSON) and return validated records.
 

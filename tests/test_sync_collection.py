@@ -1,10 +1,13 @@
 """Tests for collection sync operations."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from click.testing import CliRunner
 
-from discogs_sync.models import InputRecord, SyncActionType
+from discogs_sync.cli import main
+from discogs_sync.models import CollectionItem, InputRecord, SyncActionType
 from discogs_sync.sync_collection import sync_collection, add_to_collection, remove_from_collection
 
 
@@ -294,3 +297,57 @@ class TestFuzzyMatching:
 
         assert action.action == SyncActionType.SKIP
         assert "fuzzy match" in action.reason
+
+
+class TestCollectionListSearch:
+    """Tests for collection list --search filtering."""
+
+    ITEMS = [
+        CollectionItem(instance_id=1, release_id=10, artist="Miles Davis", title="Kind of Blue"),
+        CollectionItem(instance_id=2, release_id=20, artist="John Coltrane", title="A Love Supreme"),
+        CollectionItem(instance_id=3, release_id=30, artist="Miles Davis", title="Bitches Brew"),
+    ]
+
+    @patch("discogs_sync.sync_collection.list_collection", return_value=ITEMS)
+    @patch("discogs_sync.client_factory.build_client")
+    def test_search_matches_artist(self, _mock_client, _mock_list):
+        """--search should filter by artist name."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["collection", "list", "--search", "miles", "--output-format", "json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["total"] == 2
+        artists = {i["artist"] for i in data["items"]}
+        assert artists == {"Miles Davis"}
+
+    @patch("discogs_sync.sync_collection.list_collection", return_value=ITEMS)
+    @patch("discogs_sync.client_factory.build_client")
+    def test_search_matches_title(self, _mock_client, _mock_list):
+        """--search should filter by title."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["collection", "list", "--search", "love supreme", "--output-format", "json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["total"] == 1
+        assert data["items"][0]["title"] == "A Love Supreme"
+
+    @patch("discogs_sync.sync_collection.list_collection", return_value=ITEMS)
+    @patch("discogs_sync.client_factory.build_client")
+    def test_search_no_matches(self, _mock_client, _mock_list):
+        """--search with no matches returns empty list."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["collection", "list", "--search", "beatles", "--output-format", "json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["total"] == 0
+        assert data["items"] == []
+
+    @patch("discogs_sync.sync_collection.list_collection", return_value=ITEMS)
+    @patch("discogs_sync.client_factory.build_client")
+    def test_no_search_returns_all(self, _mock_client, _mock_list):
+        """Without --search, all items are returned."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["collection", "list", "--output-format", "json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["total"] == 3

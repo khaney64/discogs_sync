@@ -82,7 +82,7 @@ python discogs-sync.py wantlist remove --artist "Radiohead" --album "OK Computer
 python discogs-sync.py wantlist remove --release-id 7890
 
 # List current wantlist
-python discogs-sync.py wantlist list [--output-format json]
+python discogs-sync.py wantlist list [--search "QUERY"] [--output-format json]
 ```
 
 Duplicate check: skips if the release is already in the wantlist (by release_id, master_id, or fuzzy artist+title match).
@@ -107,7 +107,7 @@ python discogs-sync.py collection remove --artist "Miles Davis" --album "Kind of
 python discogs-sync.py collection remove --release-id 7890
 
 # List collection (all folders)
-python discogs-sync.py collection list [--folder-id 0] [--output-format json]
+python discogs-sync.py collection list [--search "QUERY"] [--folder-id 0] [--output-format json]
 ```
 
 Duplicate check: by default, `add` skips if the release is already in the collection (by release_id, master_id, or fuzzy artist+title match). Use `--allow-duplicate` to add another copy.
@@ -176,6 +176,7 @@ Format synonyms are normalized automatically: `LP`/`record`/`12"` → Vinyl, `co
 | `--max-price` | marketplace | Maximum price filter |
 | `--currency` | marketplace | Currency code (default: USD) |
 | `--max-versions` | marketplace | Max release versions to check per master (default: 25) |
+| `--search` | list | Filter results by artist or title (case-insensitive substring) |
 | `--dry-run` | sync | Preview changes without modifying Discogs |
 | `--remove-extras` | sync | Remove wantlist/collection items not in the input file |
 

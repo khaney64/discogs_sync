@@ -14,6 +14,7 @@ from .models import (
     WantlistItem,
 )
 from .output import print_info, print_verbose, print_warning
+from .parsers import extract_artist_from_data
 from .rate_limiter import get_rate_limiter
 from .search import (
     _api_call_with_retry,
@@ -304,12 +305,8 @@ def list_wantlist(client: discogs_client.Client) -> list[WantlistItem]:
                 release = item.release if hasattr(item, "release") else item
                 data = release.data if hasattr(release, "data") else {}
 
-                # Parse artist from title
-                title = data.get("title", "")
-                artist_name = ""
-                album_name = title
-                if " - " in title:
-                    artist_name, album_name = title.split(" - ", 1)
+                artist_name = extract_artist_from_data(data)
+                album_name = data.get("title", "")
 
                 fmt = None
                 formats = data.get("formats", [])
@@ -383,11 +380,8 @@ def _get_wantlist_release_ids(client, limiter) -> tuple[set[int], set[int], list
                 rid = data.get("id") or getattr(release, "id", None)
                 if rid:
                     ids.add(rid)
-                    title = data.get("title", "")
-                    artist_name = ""
-                    album_name = title
-                    if " - " in title:
-                        artist_name, album_name = title.split(" - ", 1)
+                    artist_name = extract_artist_from_data(data)
+                    album_name = data.get("title", "")
                     items_info.append((artist_name, album_name, rid))
                 mid = data.get("master_id")
                 if mid:

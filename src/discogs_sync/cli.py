@@ -9,6 +9,15 @@ import click
 from .exceptions import AuthenticationError, DiscogsSyncError
 
 
+def _matches_search(item, query: str) -> bool:
+    """Check if search query matches item's artist, title, or year (case-insensitive substring)."""
+    q = query.lower()
+    artist = (item.artist or "").lower()
+    title = (item.title or "").lower()
+    year = str(item.year) if getattr(item, "year", None) else ""
+    return q in artist or q in title or q in year
+
+
 @click.group()
 @click.version_option(package_name="discogs-sync")
 def main():
@@ -161,8 +170,9 @@ def wantlist_remove(artist, album, release_id, threshold, output_format):
 
 
 @wantlist.command("list")
+@click.option("--search", default=None, help="Filter by artist or title (case-insensitive)")
 @click.option("--output-format", type=click.Choice(["table", "json"]), default="table")
-def wantlist_list(output_format):
+def wantlist_list(search, output_format):
     """List all wantlist items."""
     from .client_factory import build_client
     from .output import output_wantlist, print_error
@@ -171,6 +181,9 @@ def wantlist_list(output_format):
     try:
         client = build_client()
         items = list_wantlist(client)
+        if search:
+            items = [i for i in items if _matches_search(i, search)]
+        items.sort(key=lambda i: ((i.artist or "").lower(), (i.title or "").lower()))
         output_wantlist(items, output_format)
     except DiscogsSyncError as e:
         print_error(str(e))
@@ -284,9 +297,10 @@ def collection_remove(artist, album, release_id, threshold, output_format):
 
 
 @collection.command("list")
+@click.option("--search", default=None, help="Filter by artist or title (case-insensitive)")
 @click.option("--folder-id", type=int, default=0, help="Folder ID (default: 0 All)")
 @click.option("--output-format", type=click.Choice(["table", "json"]), default="table")
-def collection_list(folder_id, output_format):
+def collection_list(search, folder_id, output_format):
     """List collection items."""
     from .client_factory import build_client
     from .output import output_collection, print_error
@@ -295,6 +309,9 @@ def collection_list(folder_id, output_format):
     try:
         client = build_client()
         items = list_collection(client, folder_id=folder_id)
+        if search:
+            items = [i for i in items if _matches_search(i, search)]
+        items.sort(key=lambda i: ((i.artist or "").lower(), (i.title or "").lower()))
         output_collection(items, output_format)
     except DiscogsSyncError as e:
         print_error(str(e))

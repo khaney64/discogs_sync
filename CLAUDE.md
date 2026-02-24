@@ -92,6 +92,8 @@ Collection differs from wantlist: uses folder_id (default 1 for adds, 0 for read
 
 All commands support `--output-format table|json`. The `output.py` module provides per-entity formatters (`output_wantlist`, `output_collection`, `output_marketplace`, `output_sync_report`). JSON mode writes to stdout; Rich tables and status messages write to stderr via `error_console`.
 
+The `wantlist list` and `collection list` commands support `--search` for client-side filtering (case-insensitive substring match against artist, title, and year). The Discogs API doesn't support server-side filtering on these endpoints, so all items are fetched first, then filtered by `_matches_search()` in `cli.py`.
+
 ## Key Conventions
 
 - Python 3.10+ required (uses `match`/`case`, `X | None` union syntax)

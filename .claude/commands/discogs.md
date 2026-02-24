@@ -13,7 +13,7 @@ You have access to the `python discogs-sync.py` CLI tool for managing Discogs wa
 - `python discogs-sync.py whoami --output-format json` — Check authenticated user
 
 ### Wantlist
-- `python discogs-sync.py wantlist list --output-format json` — List all wantlist items
+- `python discogs-sync.py wantlist list [--search "QUERY"] --output-format json` — List all wantlist items (optionally filter by artist/title)
 - `python discogs-sync.py wantlist add --artist "ARTIST" --album "ALBUM" [--format Vinyl|CD|Cassette]` — Add to wantlist
 - `python discogs-sync.py wantlist add --release-id ID` — Add by release ID
 - `python discogs-sync.py wantlist add --master-id ID` — Add by master ID
@@ -22,7 +22,7 @@ You have access to the `python discogs-sync.py` CLI tool for managing Discogs wa
 - `python discogs-sync.py wantlist sync FILE [--dry-run] [--remove-extras] --output-format json` — Batch sync from CSV/JSON
 
 ### Collection
-- `python discogs-sync.py collection list [--folder-id 0] --output-format json` — List collection
+- `python discogs-sync.py collection list [--search "QUERY"] [--folder-id 0] --output-format json` — List collection (optionally filter by artist/title)
 - `python discogs-sync.py collection add --artist "ARTIST" --album "ALBUM" [--format Vinyl] [--allow-duplicate]` — Add to collection
 - `python discogs-sync.py collection add --release-id ID [--folder-id 1]` — Add by release ID
 - `python discogs-sync.py collection remove --artist "ARTIST" --album "ALBUM"` — Remove from collection
