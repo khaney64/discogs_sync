@@ -51,6 +51,8 @@ def write_cache(name: str, items: list[dict]) -> None:
         items: List of raw item dicts (from ``to_dict()``).
 
     Failures are silently swallowed — a cache write error is non-fatal.
+    After a successful write, attempts a best-effort cleanup of expired
+    cache files so they do not accumulate indefinitely.
     """
     path = _cache_path(name)
     try:
@@ -62,6 +64,11 @@ def write_cache(name: str, items: list[dict]) -> None:
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     except OSError:
         pass  # non-fatal
+    else:
+        try:
+            cleanup_expired_caches()
+        except Exception:
+            pass  # cleanup failure is always non-fatal
 
 
 def invalidate_cache(name: str) -> None:
@@ -75,6 +82,60 @@ def invalidate_cache(name: str) -> None:
         path.unlink()
     except FileNotFoundError:
         pass
+
+
+def cleanup_expired_caches() -> int:
+    """Delete all expired or unreadable cache files in the cache directory.
+
+    A file is considered expired when its ``cached_at`` timestamp is older than
+    :data:`CACHE_TTL_SECONDS`, or when the file cannot be parsed (corrupt).
+
+    Returns:
+        The number of files removed.
+    """
+    cache_dir = get_cache_dir()
+    removed = 0
+    try:
+        paths = list(cache_dir.glob("*_cache.json"))
+    except OSError:
+        return 0
+    now = datetime.now(timezone.utc)
+    for path in paths:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            cached_at = datetime.fromisoformat(data["cached_at"])
+            age = (now - cached_at).total_seconds()
+            if age <= CACHE_TTL_SECONDS:
+                continue  # still valid — keep it
+        except (KeyError, ValueError, json.JSONDecodeError, OSError):
+            pass  # treat unreadable/corrupt files as expired
+        try:
+            path.unlink()
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
+def purge_all_caches() -> int:
+    """Delete every cache file in the cache directory.
+
+    Returns:
+        The number of files removed.
+    """
+    cache_dir = get_cache_dir()
+    removed = 0
+    try:
+        paths = list(cache_dir.glob("*_cache.json"))
+    except OSError:
+        return 0
+    for path in paths:
+        try:
+            path.unlink()
+            removed += 1
+        except OSError:
+            pass
+    return removed
 
 
 def marketplace_cache_name(

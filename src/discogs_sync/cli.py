@@ -481,5 +481,47 @@ def marketplace_search(file, artist, album, fmt, country, master_id, release_id,
         sys.exit(2)
 
 
+# ── Cache management ───────────────────────────────────────────────────────
+
+
+@main.group()
+def cache():
+    """Manage local cache files."""
+
+
+@cache.command("clean")
+def cache_clean():
+    """Remove expired cache files.
+
+    Deletes any cache file whose TTL has elapsed, freeing disk space without
+    discarding results that are still valid.
+    """
+    from .cache import cleanup_expired_caches
+    from .output import error_console
+
+    n = cleanup_expired_caches()
+    if n:
+        error_console.print(f"Removed {n} expired cache file(s).")
+    else:
+        error_console.print("No expired cache files found.")
+
+
+@cache.command("purge")
+def cache_purge():
+    """Remove all cache files.
+
+    Unconditionally deletes every cache file so the next command fetches
+    fresh data from the Discogs API.
+    """
+    from .cache import purge_all_caches
+    from .output import error_console
+
+    n = purge_all_caches()
+    if n:
+        error_console.print(f"Removed {n} cache file(s).")
+    else:
+        error_console.print("No cache files found.")
+
+
 if __name__ == "__main__":
     main()

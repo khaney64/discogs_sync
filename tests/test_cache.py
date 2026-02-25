@@ -9,7 +9,14 @@ from unittest.mock import patch
 
 import pytest
 
-from discogs_sync.cache import read_cache, write_cache, invalidate_cache, CACHE_TTL_SECONDS
+from discogs_sync.cache import (
+    read_cache,
+    write_cache,
+    invalidate_cache,
+    cleanup_expired_caches,
+    purge_all_caches,
+    CACHE_TTL_SECONDS,
+)
 from discogs_sync.models import WantlistItem, CollectionItem
 
 
@@ -157,6 +164,82 @@ class TestInvalidateCache:
             invalidate_cache("wantlist")
         assert not (tmp_path / "wantlist_cache.json").exists()
         assert (tmp_path / "collection_cache.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# cleanup_expired_caches tests
+# ---------------------------------------------------------------------------
+
+class TestCleanupExpiredCaches:
+    def test_removes_expired_file(self, tmp_path):
+        _write_raw_cache(tmp_path, "wantlist", SAMPLE_WANTLIST_DICTS, age_seconds=CACHE_TTL_SECONDS + 10)
+        with patch("discogs_sync.cache.get_cache_dir", return_value=tmp_path):
+            n = cleanup_expired_caches()
+        assert n == 1
+        assert not (tmp_path / "wantlist_cache.json").exists()
+
+    def test_keeps_valid_file(self, tmp_path):
+        _write_raw_cache(tmp_path, "wantlist", SAMPLE_WANTLIST_DICTS, age_seconds=60)
+        with patch("discogs_sync.cache.get_cache_dir", return_value=tmp_path):
+            n = cleanup_expired_caches()
+        assert n == 0
+        assert (tmp_path / "wantlist_cache.json").exists()
+
+    def test_removes_only_expired_from_mixed_set(self, tmp_path):
+        _write_raw_cache(tmp_path, "wantlist", SAMPLE_WANTLIST_DICTS, age_seconds=CACHE_TTL_SECONDS + 10)
+        _write_raw_cache(tmp_path, "collection", SAMPLE_COLLECTION_DICTS, age_seconds=60)
+        with patch("discogs_sync.cache.get_cache_dir", return_value=tmp_path):
+            n = cleanup_expired_caches()
+        assert n == 1
+        assert not (tmp_path / "wantlist_cache.json").exists()
+        assert (tmp_path / "collection_cache.json").exists()
+
+    def test_removes_corrupt_file(self, tmp_path):
+        (tmp_path / "bad_cache.json").write_text("not json", encoding="utf-8")
+        with patch("discogs_sync.cache.get_cache_dir", return_value=tmp_path):
+            n = cleanup_expired_caches()
+        assert n == 1
+        assert not (tmp_path / "bad_cache.json").exists()
+
+    def test_empty_dir_returns_zero(self, tmp_path):
+        with patch("discogs_sync.cache.get_cache_dir", return_value=tmp_path):
+            assert cleanup_expired_caches() == 0
+
+    def test_write_cache_triggers_cleanup_of_expired_files(self, tmp_path):
+        """After write_cache(), any expired files in the same dir should be removed."""
+        _write_raw_cache(tmp_path, "collection", SAMPLE_COLLECTION_DICTS, age_seconds=CACHE_TTL_SECONDS + 10)
+        with patch("discogs_sync.cache.get_cache_dir", return_value=tmp_path):
+            write_cache("wantlist", SAMPLE_WANTLIST_DICTS)
+        # The expired collection cache should have been cleaned up automatically
+        assert not (tmp_path / "collection_cache.json").exists()
+        # The freshly written wantlist cache should still exist
+        assert (tmp_path / "wantlist_cache.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# purge_all_caches tests
+# ---------------------------------------------------------------------------
+
+class TestPurgeAllCaches:
+    def test_removes_all_cache_files(self, tmp_path):
+        _write_raw_cache(tmp_path, "wantlist", SAMPLE_WANTLIST_DICTS)
+        _write_raw_cache(tmp_path, "collection", SAMPLE_COLLECTION_DICTS)
+        with patch("discogs_sync.cache.get_cache_dir", return_value=tmp_path):
+            n = purge_all_caches()
+        assert n == 2
+        assert not (tmp_path / "wantlist_cache.json").exists()
+        assert not (tmp_path / "collection_cache.json").exists()
+
+    def test_empty_dir_returns_zero(self, tmp_path):
+        with patch("discogs_sync.cache.get_cache_dir", return_value=tmp_path):
+            assert purge_all_caches() == 0
+
+    def test_removes_valid_and_expired_files(self, tmp_path):
+        _write_raw_cache(tmp_path, "wantlist", SAMPLE_WANTLIST_DICTS, age_seconds=60)
+        _write_raw_cache(tmp_path, "collection", SAMPLE_COLLECTION_DICTS, age_seconds=CACHE_TTL_SECONDS + 10)
+        with patch("discogs_sync.cache.get_cache_dir", return_value=tmp_path):
+            n = purge_all_caches()
+        assert n == 2
 
 
 # ---------------------------------------------------------------------------
