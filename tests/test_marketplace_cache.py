@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from discogs_sync.cache import marketplace_cache_name
+from discogs_sync.cache import marketplace_cache_name, marketplace_resolve_cache_name
 from discogs_sync.cli import main
 from discogs_sync.models import MarketplaceResult
 
@@ -253,33 +253,151 @@ class TestMarketplaceCacheMaster:
 
 class TestMarketplaceCacheArtistAlbum:
     def test_correct_cache_name_for_artist_album(self):
-        captured_names = []
+        """Artist+album search should write cache under marketplace_master_ key
+        (resolved from results), not marketplace_artist_. Also writes a
+        resolution cache entry."""
+        written_names = []
 
-        def fake_read(name):
-            captured_names.append(name)
-            return None
+        def fake_write(name, items):
+            written_names.append(name)
 
         with patch("discogs_sync.marketplace.search_marketplace", return_value=SAMPLE_RESULTS), \
-             patch("discogs_sync.cache.read_cache", side_effect=fake_read), \
-             patch("discogs_sync.cache.write_cache"), \
+             patch("discogs_sync.cache.read_cache", return_value=None), \
+             patch("discogs_sync.cache.write_cache", side_effect=fake_write), \
+             patch("discogs_sync.cache.read_resolve_cache", return_value=None), \
              patch("discogs_sync.client_factory.build_client"):
             runner = CliRunner()
             runner.invoke(main, ["marketplace", "search", "--artist", "Radiohead", "--album", "OK Computer", "--output-format", "json"])
 
-        assert len(captured_names) == 1
-        assert captured_names[0].startswith("marketplace_artist_")
-        assert captured_names[0] == _expected_name("artist", "Radiohead", "OK Computer", None, None, "USD", 25, 0.7)
+        # Should write: resolution cache + marketplace_master_ base cache
+        marketplace_writes = [n for n in written_names if n.startswith("marketplace_master_")]
+        resolve_writes = [n for n in written_names if n.startswith("marketplace_resolve_")]
+        assert len(marketplace_writes) == 1
+        assert marketplace_writes[0] == _expected_name("master", SAMPLE_RESULTS[0].master_id, None, None, "USD", 25)
+        assert len(resolve_writes) == 1
 
-    def test_threshold_in_artist_key(self):
-        a = marketplace_cache_name("artist", "Radiohead", "OK Computer", None, None, "USD", 25, 0.7)
-        b = marketplace_cache_name("artist", "Radiohead", "OK Computer", None, None, "USD", 25, 0.9)
+    def test_threshold_in_resolve_key(self):
+        """Different thresholds should produce different resolution cache keys."""
+        a = marketplace_resolve_cache_name("Radiohead", "OK Computer", 0.7)
+        b = marketplace_resolve_cache_name("Radiohead", "OK Computer", 0.9)
         assert a != b
 
-    def test_artist_only_uses_empty_album_in_key(self):
-        """Using '' for missing album should be identical to explicit empty string."""
-        name_empty = marketplace_cache_name("artist", "Radiohead", "", None, None, "USD", 25, 0.7)
-        name_explicit = marketplace_cache_name("artist", "Radiohead", "", None, None, "USD", 25, 0.7)
-        assert name_empty == name_explicit
+    def test_artist_album_resolution_cache_hit_uses_master_key(self):
+        """When resolution cache has a master_id, marketplace read uses master key."""
+        resolved = {"master_id": 3425, "release_id": 7890}
+        expected_base = _expected_name("master", 3425, None, None, "USD", 25)
+        read_names = []
+
+        def fake_read(name):
+            read_names.append(name)
+            if name == expected_base:
+                return SAMPLE_DICTS
+            return None
+
+        with patch("discogs_sync.marketplace.search_marketplace") as mock_search, \
+             patch("discogs_sync.cache.read_cache", side_effect=fake_read), \
+             patch("discogs_sync.cache.write_cache"), \
+             patch("discogs_sync.cache.read_resolve_cache", return_value=resolved), \
+             patch("discogs_sync.client_factory.build_client"):
+            runner = CliRunner()
+            result = runner.invoke(main, ["marketplace", "search", "--artist", "Radiohead", "--album", "OK Computer", "--output-format", "json"])
+
+        assert result.exit_code == 0
+        mock_search.assert_not_called()
+        assert expected_base in read_names
+
+    def test_master_id_and_artist_album_share_cache(self):
+        """After an artist+album search caches under master key, a subsequent
+        --master-id search should hit that same cache entry."""
+        mid = SAMPLE_RESULTS[0].master_id
+        expected_base = _expected_name("master", mid, None, None, "USD", 25)
+
+        # Simulate: artist+album wrote to this key → now master-id reads it
+        read_names = []
+
+        def fake_read(name):
+            read_names.append(name)
+            if name == expected_base:
+                return SAMPLE_DICTS
+            return None
+
+        with patch("discogs_sync.marketplace.search_marketplace") as mock_search, \
+             patch("discogs_sync.cache.read_cache", side_effect=fake_read), \
+             patch("discogs_sync.cache.write_cache"), \
+             patch("discogs_sync.client_factory.build_client"):
+            runner = CliRunner()
+            result = runner.invoke(main, ["marketplace", "search", "--master-id", str(mid), "--output-format", "json"])
+
+        assert result.exit_code == 0
+        mock_search.assert_not_called()
+        assert expected_base in read_names
+
+    def test_artist_album_fallback_to_release_cache(self):
+        """When results have no master_id, artist+album should cache under release key."""
+        release_only_results = [
+            MarketplaceResult(
+                master_id=None, release_id=7890, title="OK Computer",
+                artist="Radiohead", format="Vinyl", country="UK",
+                year=1997, num_for_sale=5, lowest_price=25.0, currency="USD",
+            ),
+        ]
+        written_names = []
+
+        def fake_write(name, items):
+            written_names.append(name)
+
+        with patch("discogs_sync.marketplace.search_marketplace", return_value=release_only_results), \
+             patch("discogs_sync.cache.read_cache", return_value=None), \
+             patch("discogs_sync.cache.write_cache", side_effect=fake_write), \
+             patch("discogs_sync.cache.read_resolve_cache", return_value=None), \
+             patch("discogs_sync.client_factory.build_client"):
+            runner = CliRunner()
+            runner.invoke(main, ["marketplace", "search", "--artist", "Radiohead", "--album", "OK Computer", "--output-format", "json"])
+
+        release_writes = [n for n in written_names if n.startswith("marketplace_release_")]
+        assert len(release_writes) == 1
+        assert release_writes[0] == _expected_name("release", 7890, "USD")
+
+    def test_no_cache_skips_resolution_read_but_writes(self):
+        """--no-cache skips resolution cache read, but still writes both
+        resolution and marketplace caches."""
+        written_names = []
+
+        def fake_write(name, items):
+            written_names.append(name)
+
+        with patch("discogs_sync.marketplace.search_marketplace", return_value=SAMPLE_RESULTS), \
+             patch("discogs_sync.cache.read_cache") as mock_read, \
+             patch("discogs_sync.cache.write_cache", side_effect=fake_write), \
+             patch("discogs_sync.cache.read_resolve_cache") as mock_resolve_read, \
+             patch("discogs_sync.client_factory.build_client"):
+            runner = CliRunner()
+            runner.invoke(main, ["marketplace", "search", "--artist", "Radiohead", "--album", "OK Computer", "--no-cache", "--output-format", "json"])
+
+        mock_read.assert_not_called()
+        mock_resolve_read.assert_not_called()
+        # Should still write marketplace cache + resolution cache
+        marketplace_writes = [n for n in written_names if n.startswith("marketplace_master_")]
+        resolve_writes = [n for n in written_names if n.startswith("marketplace_resolve_")]
+        assert len(marketplace_writes) == 1
+        assert len(resolve_writes) == 1
+
+    def test_empty_results_skip_cache_write(self):
+        """When search returns no results, no cache write should happen."""
+        written_names = []
+
+        def fake_write(name, items):
+            written_names.append(name)
+
+        with patch("discogs_sync.marketplace.search_marketplace", return_value=[]), \
+             patch("discogs_sync.cache.read_cache", return_value=None), \
+             patch("discogs_sync.cache.write_cache", side_effect=fake_write), \
+             patch("discogs_sync.cache.read_resolve_cache", return_value=None), \
+             patch("discogs_sync.client_factory.build_client"):
+            runner = CliRunner()
+            runner.invoke(main, ["marketplace", "search", "--artist", "Nobody", "--album", "Nothing", "--output-format", "json"])
+
+        assert len(written_names) == 0
 
 
 # ---------------------------------------------------------------------------

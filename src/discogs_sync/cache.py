@@ -161,3 +161,61 @@ def marketplace_cache_name(
     raw = "|".join(str(p) for p in key_parts)
     digest = hashlib.md5(raw.encode()).hexdigest()[:16]
     return f"marketplace_{cache_type}_{digest}"
+
+
+def marketplace_resolve_cache_name(
+    artist: str,
+    album: str,
+    threshold: float,
+) -> str:
+    """Return the cache name for an artist+album → master/release resolution mapping.
+
+    Artist and album are lowercased and stripped before hashing so that
+    ``"Steely Dan"`` and ``"steely dan"`` produce the same key.
+
+    Args:
+        artist: Artist name.
+        album: Album title.
+        threshold: Match score threshold (part of the key because different
+            thresholds can resolve to different releases).
+
+    Returns:
+        A cache name string like ``marketplace_resolve_{md5}``.
+    """
+    raw = "|".join([
+        (artist or "").strip().lower(),
+        (album or "").strip().lower(),
+        str(threshold),
+    ])
+    digest = hashlib.md5(raw.encode()).hexdigest()[:16]
+    return f"marketplace_resolve_{digest}"
+
+
+def read_resolve_cache(
+    artist: str,
+    album: str,
+    threshold: float,
+) -> dict | None:
+    """Read a cached artist+album → master/release resolution.
+
+    Returns:
+        ``{"master_id": int|None, "release_id": int|None}`` on cache hit,
+        or ``None`` on miss / expiry / error.
+    """
+    name = marketplace_resolve_cache_name(artist, album, threshold)
+    items = read_cache(name)
+    if items and len(items) == 1:
+        return items[0]
+    return None
+
+
+def write_resolve_cache(
+    artist: str,
+    album: str,
+    threshold: float,
+    master_id: int | None,
+    release_id: int | None,
+) -> None:
+    """Cache the resolution of artist+album to master/release IDs."""
+    name = marketplace_resolve_cache_name(artist, album, threshold)
+    write_cache(name, [{"master_id": master_id, "release_id": release_id}])

@@ -399,7 +399,7 @@ def marketplace_search(file, artist, album, fmt, country, master_id, release_id,
     Provide a CSV/JSON file for batch search, or use --artist/--album, --master-id, or --release-id for individual search.
     Batch file mode always fetches live. Single-item searches are cached for 1 hour.
     """
-    from .cache import marketplace_cache_name, read_cache, write_cache
+    from .cache import marketplace_cache_name, read_cache, write_cache, read_resolve_cache, write_resolve_cache
     from .client_factory import build_client
     from .models import MarketplaceResult
     from .output import output_marketplace, print_error, print_warning
@@ -427,18 +427,36 @@ def marketplace_search(file, artist, album, fmt, country, master_id, release_id,
             #   base_name   : results without price_suggestions (always written)
             #   details_name: results with price_suggestions (written when --details)
             # min_price/max_price are post-fetch filters and are not part of the key.
+            #
+            # For artist+album searches, the cache key is deferred: we first
+            # check a lightweight resolution cache that maps (artist, album) →
+            # master/release ID, then use the same key as a direct --master-id
+            # or --release-id lookup.  This ensures both access patterns share
+            # one cache entry.
+            is_artist_album = not release_id and not master_id
             if release_id and not master_id:
                 base_name = marketplace_cache_name("release", release_id, currency)
             elif master_id:
                 base_name = marketplace_cache_name("master", master_id, fmt, country, currency, max_versions)
             else:
-                base_name = marketplace_cache_name("artist", artist or "", album or "", fmt, country, currency, max_versions, threshold)
-            details_name = f"{base_name}_details"
+                # Artist+album: check resolution cache to get a master/release key
+                base_name = None
+                if not no_cache:
+                    resolved = read_resolve_cache(artist, album, threshold)
+                    if resolved:
+                        mid = resolved.get("master_id")
+                        rid = resolved.get("release_id")
+                        if mid:
+                            base_name = marketplace_cache_name("master", mid, fmt, country, currency, max_versions)
+                        elif rid:
+                            base_name = marketplace_cache_name("release", rid, currency)
+
+            details_name = f"{base_name}_details" if base_name else None
 
             results = None
             client = None  # lazily initialised
 
-            if not no_cache:
+            if not no_cache and base_name:
                 if details:
                     # Try details cache first (has price_suggestions already merged)
                     cached = read_cache(details_name)
@@ -469,11 +487,26 @@ def marketplace_search(file, artist, album, fmt, country, master_id, release_id,
                     currency=currency, max_versions=max_versions, threshold=threshold,
                     details=details, verbose=verbose,
                 )
+
+                # Determine cache key post-hoc for artist+album searches
+                if is_artist_album and base_name is None and results:
+                    mid = results[0].master_id
+                    rid = results[0].release_id
+                    if mid:
+                        base_name = marketplace_cache_name("master", mid, fmt, country, currency, max_versions)
+                    elif rid:
+                        base_name = marketplace_cache_name("release", rid, currency)
+                    # Save resolution mapping for future lookups
+                    write_resolve_cache(artist, album, threshold, mid, rid)
+                    details_name = f"{base_name}_details" if base_name else None
+
                 # Always save base results (price_suggestions stripped)
-                base_dicts = [{k: v for k, v in r.to_dict().items() if k != "price_suggestions"} for r in results]
-                write_cache(base_name, base_dicts)
-                if details:
-                    write_cache(details_name, [r.to_dict() for r in results])
+                if base_name:
+                    base_dicts = [{k: v for k, v in r.to_dict().items() if k != "price_suggestions"} for r in results]
+                    write_cache(base_name, base_dicts)
+                    if details:
+                        details_name = details_name or f"{base_name}_details"
+                        write_cache(details_name, [r.to_dict() for r in results])
 
         output_marketplace(results, output_format, details=details)
     except DiscogsSyncError as e:

@@ -111,10 +111,11 @@ All mutating commands (`add`, `remove`, `sync`) call `invalidate_cache()` after 
 
 #### Marketplace
 
-`marketplace search` (single-item only; batch mode never caches) uses MD5-hashed cache keys via `marketplace_cache_name(cache_type, *key_parts)` in `cache.py`. Three key types:
+`marketplace search` (single-item only; batch mode never caches) uses MD5-hashed cache keys via `marketplace_cache_name(cache_type, *key_parts)` in `cache.py`. Two key types:
 - `"release"` — keyed on `release_id + currency`
 - `"master"` — keyed on `master_id + fmt + country + currency + max_versions`
-- `"artist"` — keyed on `artist + album + fmt + country + currency + max_versions + threshold`
+
+Artist+album searches resolve to the same `"master"` (or `"release"`) key via a **resolution cache** so that `--artist "steely dan" --album "pretzel logic"` and `--master-id 16984` share one cache entry. The resolution cache maps `(artist, album, threshold)` → `{master_id, release_id}` using `marketplace_resolve_{md5}` cache files. On a cold artist+album search the master/release ID is extracted from the results and the resolution mapping is written alongside the marketplace data.
 
 The `--details` flag uses a **two-layer cache**:
 - **Base cache** (`marketplace_{type}_{md5}`) — stores results *without* `price_suggestions`
@@ -124,10 +125,12 @@ When `--details` is requested: try details cache → try base cache + call `fetc
 
 #### Cache API
 
-Cache logic lives in `cache.py` and exposes three functions used by `cli.py`:
+Cache logic lives in `cache.py` and exposes these functions used by `cli.py`:
 - `read_cache(name)` → `list[dict] | None` — returns items if age < 3600s, else `None`
 - `write_cache(name, items)` — writes `{"cached_at": "<utc-iso>", "items": [...]}` to disk (non-fatal on failure)
 - `invalidate_cache(name)` — deletes the cache file (silent no-op if absent)
+- `read_resolve_cache(artist, album, threshold)` → `{"master_id": int|None, "release_id": int|None} | None`
+- `write_resolve_cache(artist, album, threshold, master_id, release_id)` — saves artist+album → ID mapping
 
 `--no-cache` skips the cache read but still writes fresh results back (applies to wantlist list, collection list, and marketplace search single-item).
 

@@ -15,6 +15,9 @@ from discogs_sync.cache import (
     invalidate_cache,
     cleanup_expired_caches,
     purge_all_caches,
+    marketplace_resolve_cache_name,
+    read_resolve_cache,
+    write_resolve_cache,
     CACHE_TTL_SECONDS,
 )
 from discogs_sync.models import WantlistItem, CollectionItem
@@ -268,3 +271,67 @@ class TestModelRoundTrip:
     def test_collection_item_round_trip_nulls(self):
         original = CollectionItem(instance_id=1, release_id=42)
         assert CollectionItem.from_dict(original.to_dict()) == original
+
+
+# ---------------------------------------------------------------------------
+# marketplace_resolve_cache_name tests
+# ---------------------------------------------------------------------------
+
+class TestMarketplaceResolveCacheName:
+    def test_case_insensitive(self):
+        a = marketplace_resolve_cache_name("Steely Dan", "Pretzel Logic", 0.7)
+        b = marketplace_resolve_cache_name("steely dan", "pretzel logic", 0.7)
+        assert a == b
+
+    def test_strips_whitespace(self):
+        a = marketplace_resolve_cache_name("  Steely Dan  ", "Pretzel Logic", 0.7)
+        b = marketplace_resolve_cache_name("Steely Dan", "Pretzel Logic", 0.7)
+        assert a == b
+
+    def test_different_threshold_different_key(self):
+        a = marketplace_resolve_cache_name("Radiohead", "OK Computer", 0.7)
+        b = marketplace_resolve_cache_name("Radiohead", "OK Computer", 0.9)
+        assert a != b
+
+    def test_different_artist_different_key(self):
+        a = marketplace_resolve_cache_name("Radiohead", "OK Computer", 0.7)
+        b = marketplace_resolve_cache_name("Pink Floyd", "OK Computer", 0.7)
+        assert a != b
+
+    def test_prefix_format(self):
+        name = marketplace_resolve_cache_name("Radiohead", "OK Computer", 0.7)
+        assert name.startswith("marketplace_resolve_")
+
+
+# ---------------------------------------------------------------------------
+# read_resolve_cache / write_resolve_cache round-trip tests
+# ---------------------------------------------------------------------------
+
+class TestResolveCache:
+    def test_round_trip(self, tmp_path):
+        with patch("discogs_sync.cache.get_cache_dir", return_value=tmp_path):
+            write_resolve_cache("Radiohead", "OK Computer", 0.7, master_id=3425, release_id=7890)
+            result = read_resolve_cache("Radiohead", "OK Computer", 0.7)
+        assert result == {"master_id": 3425, "release_id": 7890}
+
+    def test_miss_returns_none(self, tmp_path):
+        with patch("discogs_sync.cache.get_cache_dir", return_value=tmp_path):
+            assert read_resolve_cache("Nobody", "Nothing", 0.7) is None
+
+    def test_case_insensitive_read(self, tmp_path):
+        with patch("discogs_sync.cache.get_cache_dir", return_value=tmp_path):
+            write_resolve_cache("Steely Dan", "Pretzel Logic", 0.7, master_id=16984, release_id=None)
+            result = read_resolve_cache("steely dan", "pretzel logic", 0.7)
+        assert result == {"master_id": 16984, "release_id": None}
+
+    def test_expired_returns_none(self, tmp_path):
+        with patch("discogs_sync.cache.get_cache_dir", return_value=tmp_path):
+            write_resolve_cache("Radiohead", "OK Computer", 0.7, master_id=3425, release_id=7890)
+        # Manually age the file
+        name = marketplace_resolve_cache_name("Radiohead", "OK Computer", 0.7)
+        path = tmp_path / f"{name}_cache.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["cached_at"] = (datetime.now(timezone.utc) - timedelta(seconds=CACHE_TTL_SECONDS + 10)).isoformat()
+        path.write_text(json.dumps(data), encoding="utf-8")
+        with patch("discogs_sync.cache.get_cache_dir", return_value=tmp_path):
+            assert read_resolve_cache("Radiohead", "OK Computer", 0.7) is None
