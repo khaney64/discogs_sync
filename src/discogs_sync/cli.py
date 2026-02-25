@@ -177,9 +177,11 @@ def wantlist_remove(artist, album, release_id, threshold, output_format):
 
 @wantlist.command("list")
 @click.option("--search", default=None, help="Filter by artist or title (case-insensitive)")
+@click.option("--format", "fmt", default=None, help="Filter by format (e.g., Vinyl, CD, Cassette)")
+@click.option("--year", type=int, default=None, help="Filter by release year")
 @click.option("--no-cache", is_flag=True, default=False, help="Bypass cache and fetch fresh data (cache is still updated)")
 @click.option("--output-format", type=click.Choice(["table", "json"]), default="table")
-def wantlist_list(search, no_cache, output_format):
+def wantlist_list(search, fmt, year, no_cache, output_format):
     """List all wantlist items."""
     from .cache import read_cache, write_cache
     from .client_factory import build_client
@@ -199,6 +201,12 @@ def wantlist_list(search, no_cache, output_format):
             write_cache("wantlist", [i.to_dict() for i in items])
         if search:
             items = [i for i in items if _matches_search(i, search)]
+        if fmt:
+            from .parsers import normalize_format
+            normalized = normalize_format(fmt)
+            items = [i for i in items if (i.format or "").lower() == normalized.lower()]
+        if year:
+            items = [i for i in items if i.year == year]
         items.sort(key=lambda i: ((i.artist or "").lower(), (i.title or "").lower()))
         output_wantlist(items, output_format)
     except DiscogsSyncError as e:
@@ -320,10 +328,12 @@ def collection_remove(artist, album, release_id, threshold, output_format):
 
 @collection.command("list")
 @click.option("--search", default=None, help="Filter by artist or title (case-insensitive)")
+@click.option("--format", "fmt", default=None, help="Filter by format (e.g., Vinyl, CD, Cassette)")
+@click.option("--year", type=int, default=None, help="Filter by release year")
 @click.option("--folder-id", type=int, default=0, help="Folder ID (default: 0 All)")
 @click.option("--no-cache", is_flag=True, default=False, help="Bypass cache and fetch fresh data (cache is still updated)")
 @click.option("--output-format", type=click.Choice(["table", "json"]), default="table")
-def collection_list(search, folder_id, no_cache, output_format):
+def collection_list(search, fmt, year, folder_id, no_cache, output_format):
     """List collection items."""
     from .cache import read_cache, write_cache
     from .client_factory import build_client
@@ -345,6 +355,12 @@ def collection_list(search, folder_id, no_cache, output_format):
                 write_cache("collection", [i.to_dict() for i in items])
         if search:
             items = [i for i in items if _matches_search(i, search)]
+        if fmt:
+            from .parsers import normalize_format
+            normalized = normalize_format(fmt)
+            items = [i for i in items if (i.format or "").lower() == normalized.lower()]
+        if year:
+            items = [i for i in items if i.year == year]
         items.sort(key=lambda i: ((i.artist or "").lower(), (i.title or "").lower()))
         output_collection(items, output_format)
     except DiscogsSyncError as e:

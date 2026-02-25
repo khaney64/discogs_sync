@@ -95,7 +95,7 @@ python discogs-sync.py wantlist remove --artist "Radiohead" --album "OK Computer
 python discogs-sync.py wantlist remove --release-id 7890
 
 # List current wantlist
-python discogs-sync.py wantlist list [--search "QUERY"] [--no-cache] [--output-format json]
+python discogs-sync.py wantlist list [--search "QUERY"] [--format Vinyl] [--year 1997] [--no-cache] [--output-format json]
 ```
 
 Duplicate check: skips if the release is already in the wantlist (by release_id, master_id, or fuzzy artist+title match).
@@ -120,7 +120,7 @@ python discogs-sync.py collection remove --artist "Miles Davis" --album "Kind of
 python discogs-sync.py collection remove --release-id 7890
 
 # List collection (all folders)
-python discogs-sync.py collection list [--search "QUERY"] [--folder-id 0] [--no-cache] [--output-format json]
+python discogs-sync.py collection list [--search "QUERY"] [--format CD] [--year 1959] [--folder-id 0] [--no-cache] [--output-format json]
 ```
 
 Duplicate check: by default, `add` skips if the release is already in the collection (by release_id, master_id, or fuzzy artist+title match). Use `--allow-duplicate` to add another copy.
@@ -188,7 +188,8 @@ Format synonyms are normalized automatically: `LP`/`record`/`12"` → Vinyl, `co
 |--------|-----------|-------------|
 | `--output-format` | All | `table` (default) or `json` for machine-readable output |
 | `--threshold` | add, remove, search, sync | Match score threshold 0.0–1.0 (default: 0.7) |
-| `--format` | add, marketplace search | Filter by format: Vinyl, CD, Cassette |
+| `--format` | add, list, marketplace search | Filter by format: Vinyl, CD, Cassette (synonyms like LP, record are normalized) |
+| `--year` | list | Filter by release year (exact match) |
 | `--folder-id` | collection | Target folder (default: 1 for adds, 0 for reads) |
 | `--allow-duplicate` | collection add | Allow adding another copy of an album already in collection |
 | `--country` | marketplace search | Filter by country of pressing (exact match: US, UK, Germany, etc.) |
@@ -200,7 +201,7 @@ Format synonyms are normalized automatically: `LP`/`record`/`12"` → Vinyl, `co
 | `--details` | marketplace search | Include suggested prices by condition grade |
 | `--no-cache` | list, marketplace search | Bypass local cache; fresh results are still written back to cache |
 | `--verbose` | sync, marketplace search | Show detailed progress and API call logging |
-| `--search` | list | Filter results by artist or title (case-insensitive substring) |
+| `--search` | list | Filter results by artist or title (case-insensitive substring match) |
 | `--dry-run` | sync | Preview changes without modifying Discogs |
 | `--remove-extras` | sync | Remove wantlist/collection items not in the input file |
 

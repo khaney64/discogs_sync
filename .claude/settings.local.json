@@ -15,7 +15,10 @@
       "Bash(python:*)",
       "Bash(python3:*)",
       "Bash(more:*)",
-      "Bash(ls -la \"C:\\\\development\\\\ai\\\\discogs\\\\.claude\"\" 2>/dev/null || echo \".claude directory not found \")"
+      "Bash(ls -la \"C:\\\\development\\\\ai\\\\discogs\\\\.claude\"\" 2>/dev/null || echo \".claude directory not found \")",
+      "Bash(pytest:*)",
+      "Bash(pip3 install:*)",
+      "Bash(tail:*)"
     ]
   }
 }
