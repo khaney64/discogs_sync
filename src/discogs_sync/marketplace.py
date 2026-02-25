@@ -315,6 +315,48 @@ def search_marketplace(
     return results
 
 
+def fetch_price_suggestions_for_results(
+    client: discogs_client.Client,
+    results: list[MarketplaceResult],
+    verbose: bool = False,
+) -> dict[int, dict | None]:
+    """Fetch price suggestions for an already-resolved list of marketplace results.
+
+    Used when base results are available from cache but ``price_suggestions``
+    have not been fetched yet (i.e. the details cache is cold).
+
+    Args:
+        client: Authenticated Discogs client.
+        results: List of :class:`MarketplaceResult` whose ``release_id`` values
+            are used to look up price suggestions.
+        verbose: If ``True``, print progress messages.
+
+    Returns:
+        Mapping of ``release_id`` → price-suggestions dict (or ``None`` on
+        failure).  Release IDs with no ``release_id`` value are skipped.
+    """
+    global _skip_price_suggestions
+    _skip_price_suggestions = False
+    limiter = get_rate_limiter()
+    suggestions: dict[int, dict | None] = {}
+    for result in results:
+        if result.release_id is None:
+            continue
+        try:
+            release = _api_call_with_retry(
+                lambda rid=result.release_id: client.release(rid),
+                limiter, verbose=verbose, description=f"release({result.release_id})",
+            )
+            _api_call_with_retry(
+                lambda r=release: r.refresh(),
+                limiter, verbose=verbose, description=f"release({result.release_id}).refresh()",
+            )
+            suggestions[result.release_id] = _extract_price_suggestions(release, limiter, verbose=verbose)
+        except Exception:
+            suggestions[result.release_id] = None
+    return suggestions
+
+
 def search_marketplace_batch(
     client: discogs_client.Client,
     records: list[InputRecord],

@@ -166,6 +166,27 @@ class MarketplaceResult:
             d["community_want"] = self.community_want
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "MarketplaceResult":
+        return cls(
+            master_id=d.get("master_id"),
+            release_id=d.get("release_id"),
+            title=d.get("title"),
+            artist=d.get("artist"),
+            format=d.get("format"),
+            country=d.get("country"),
+            year=d.get("year"),
+            num_for_sale=d.get("num_for_sale", 0),
+            lowest_price=d.get("lowest_price"),
+            currency=d.get("currency", "USD"),
+            price_suggestions=d.get("price_suggestions"),
+            label=d.get("label"),
+            catno=d.get("catno"),
+            format_details=d.get("format_details"),
+            community_have=d.get("community_have"),
+            community_want=d.get("community_want"),
+        )
+
 
 @dataclass
 class WantlistItem:

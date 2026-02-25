@@ -96,7 +96,7 @@ python discogs-sync.py wantlist remove --artist "Radiohead" --album "OK Computer
 python discogs-sync.py wantlist remove --release-id 7890
 
 # List current wantlist
-python discogs-sync.py wantlist list [--search "QUERY"] [--output-format json]
+python discogs-sync.py wantlist list [--search "QUERY"] [--no-cache] [--output-format json]
 ```
 
 Duplicate check: skips if the release is already in the wantlist (by release_id, master_id, or fuzzy artist+title match).
@@ -121,7 +121,7 @@ python discogs-sync.py collection remove --artist "Miles Davis" --album "Kind of
 python discogs-sync.py collection remove --release-id 7890
 
 # List collection (all folders)
-python discogs-sync.py collection list [--search "QUERY"] [--folder-id 0] [--output-format json]
+python discogs-sync.py collection list [--search "QUERY"] [--folder-id 0] [--no-cache] [--output-format json]
 ```
 
 Duplicate check: by default, `add` skips if the release is already in the collection (by release_id, master_id, or fuzzy artist+title match). Use `--allow-duplicate` to add another copy.
@@ -145,7 +145,7 @@ python discogs-sync.py marketplace search --artist "Pink Floyd" --album "The Dar
 python discogs-sync.py marketplace search --artist "Radiohead" --album "OK Computer" --verbose --details
 ```
 
-Returns release versions sorted by lowest price, with number of copies for sale.
+Returns release versions sorted by lowest price, with number of copies for sale. Single-item results are cached for 1 hour by lookup parameters. With `--details`, a separate details cache entry is used; if only the base cache is warm the tool fetches just the condition-grade price suggestions rather than re-running the full search. Pass `--no-cache` to force a live fetch (result is still written to cache).
 
 ### Bulk Operations via File
 
@@ -199,6 +199,7 @@ Format synonyms are normalized automatically: `LP`/`record`/`12"` → Vinyl, `co
 | `--currency` | marketplace | Currency code (default: USD) |
 | `--max-versions` | marketplace | Max release versions to check per master (default: 25) |
 | `--details` | marketplace search | Include suggested prices by condition grade |
+| `--no-cache` | list, marketplace search | Bypass local cache; fresh results are still written back to cache |
 | `--verbose` | sync, marketplace search | Show detailed progress and API call logging |
 | `--search` | list | Filter results by artist or title (case-insensitive substring) |
 | `--dry-run` | sync | Preview changes without modifying Discogs |
@@ -354,4 +355,5 @@ When using `--master-id` or `--release-id`, no search is needed — the ID is us
 - Use `--dry-run` before any sync to preview what would change. This makes no API writes.
 - The `--remove-extras` flag on sync commands will remove items from your wantlist/collection that are not in the input file. Use with caution.
 - Collection allows multiple instances of the same release (e.g., two copies of the same LP). By default, `collection add` skips duplicates with a message. Use `--allow-duplicate` to add another copy.
+- Cache files are stored in `~/.discogs-sync/` alongside `config.json`: `wantlist_cache.json`, `collection_cache.json`, and `marketplace_<type>_<hash>.json` (plus `…_details.json` variants). Delete any of these files to manually clear a stale cache entry.
 - Credentials in `~/.discogs-sync/config.json` contain your Discogs tokens. On Linux/macOS, restrict permissions: `chmod 600 ~/.discogs-sync/config.json`. Revoke tokens at https://www.discogs.com/settings/developers if compromised.

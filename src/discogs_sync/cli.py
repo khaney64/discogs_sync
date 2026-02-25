@@ -375,13 +375,17 @@ def marketplace():
 @click.option("--threshold", type=float, default=0.7, help="Match score threshold")
 @click.option("--details", is_flag=True, help="Include suggested prices by condition grade")
 @click.option("--verbose", is_flag=True, help="Show detailed progress")
+@click.option("--no-cache", is_flag=True, default=False, help="Bypass cache and fetch fresh data (cache is still updated)")
 @click.option("--output-format", type=click.Choice(["table", "json"]), default="table")
-def marketplace_search(file, artist, album, fmt, country, master_id, release_id, min_price, max_price, currency, max_versions, threshold, details, verbose, output_format):
+def marketplace_search(file, artist, album, fmt, country, master_id, release_id, min_price, max_price, currency, max_versions, threshold, details, verbose, no_cache, output_format):
     """Search marketplace pricing.
 
     Provide a CSV/JSON file for batch search, or use --artist/--album, --master-id, or --release-id for individual search.
+    Batch file mode always fetches live. Single-item searches are cached for 1 hour.
     """
+    from .cache import marketplace_cache_name, read_cache, write_cache
     from .client_factory import build_client
+    from .models import MarketplaceResult
     from .output import output_marketplace, print_error, print_warning
     from .marketplace import search_marketplace, search_marketplace_batch
 
@@ -390,9 +394,9 @@ def marketplace_search(file, artist, album, fmt, country, master_id, release_id,
         sys.exit(2)
 
     try:
-        client = build_client()
-
         if file:
+            # Batch mode — no caching
+            client = build_client()
             from .parsers import parse_file
             records = parse_file(file)
             results, errors = search_marketplace_batch(
@@ -403,12 +407,57 @@ def marketplace_search(file, artist, album, fmt, country, master_id, release_id,
             for err in errors:
                 print_warning(f"{err['artist']} - {err['album']}: {err['error']}")
         else:
-            results = search_marketplace(
-                client, master_id=master_id, release_id=release_id, artist=artist, album=album,
-                format=fmt, country=country, min_price=min_price, max_price=max_price,
-                currency=currency, max_versions=max_versions, threshold=threshold,
-                details=details, verbose=verbose,
-            )
+            # Single-item mode — cache is split into two layers:
+            #   base_name   : results without price_suggestions (always written)
+            #   details_name: results with price_suggestions (written when --details)
+            # min_price/max_price are post-fetch filters and are not part of the key.
+            if release_id and not master_id:
+                base_name = marketplace_cache_name("release", release_id, currency)
+            elif master_id:
+                base_name = marketplace_cache_name("master", master_id, fmt, country, currency, max_versions)
+            else:
+                base_name = marketplace_cache_name("artist", artist or "", album or "", fmt, country, currency, max_versions, threshold)
+            details_name = f"{base_name}_details"
+
+            results = None
+            client = None  # lazily initialised
+
+            if not no_cache:
+                if details:
+                    # Try details cache first (has price_suggestions already merged)
+                    cached = read_cache(details_name)
+                    if cached is not None:
+                        results = [MarketplaceResult.from_dict(d) for d in cached]
+
+                if results is None:
+                    # Try base cache
+                    cached = read_cache(base_name)
+                    if cached is not None:
+                        results = [MarketplaceResult.from_dict(d) for d in cached]
+                        if details:
+                            # Fetch only price_suggestions for the cached releases
+                            from .marketplace import fetch_price_suggestions_for_results
+                            client = build_client()
+                            ps_map = fetch_price_suggestions_for_results(client, results, verbose=verbose)
+                            for r in results:
+                                if r.release_id is not None:
+                                    r.price_suggestions = ps_map.get(r.release_id)
+                            write_cache(details_name, [r.to_dict() for r in results])
+
+            if results is None:
+                if client is None:
+                    client = build_client()
+                results = search_marketplace(
+                    client, master_id=master_id, release_id=release_id, artist=artist, album=album,
+                    format=fmt, country=country, min_price=min_price, max_price=max_price,
+                    currency=currency, max_versions=max_versions, threshold=threshold,
+                    details=details, verbose=verbose,
+                )
+                # Always save base results (price_suggestions stripped)
+                base_dicts = [{k: v for k, v in r.to_dict().items() if k != "price_suggestions"} for r in results]
+                write_cache(base_name, base_dicts)
+                if details:
+                    write_cache(details_name, [r.to_dict() for r in results])
 
         output_marketplace(results, output_format, details=details)
     except DiscogsSyncError as e:

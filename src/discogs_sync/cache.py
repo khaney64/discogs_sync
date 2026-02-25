@@ -1,7 +1,8 @@
-"""File-based TTL cache for list results (wantlist, collection)."""
+"""File-based TTL cache for list results (wantlist, collection, marketplace)."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,3 +75,28 @@ def invalidate_cache(name: str) -> None:
         path.unlink()
     except FileNotFoundError:
         pass
+
+
+def marketplace_cache_name(
+    cache_type: str,
+    *key_parts: object,
+) -> str:
+    """Return a stable cache name for a marketplace search.
+
+    The name is ``marketplace_{cache_type}_{md5}`` where the MD5 is computed
+    over the pipe-joined string representation of *key_parts*. This keeps
+    filenames safe regardless of artist/album content.
+
+    Args:
+        cache_type: One of ``"release"``, ``"master"``, or ``"artist"``.
+        *key_parts: Values that together uniquely identify the search
+            (IDs, filters, flags, etc.).
+
+    Returns:
+        A string suitable for use as the *name* argument to
+        :func:`read_cache`, :func:`write_cache`, and
+        :func:`invalidate_cache`.
+    """
+    raw = "|".join(str(p) for p in key_parts)
+    digest = hashlib.md5(raw.encode()).hexdigest()[:16]
+    return f"marketplace_{cache_type}_{digest}"

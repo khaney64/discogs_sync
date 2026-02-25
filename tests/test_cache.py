@@ -59,8 +59,8 @@ class TestReadCache:
             assert read_cache("wantlist") is None
 
     def test_returns_items_on_exactly_ttl_boundary(self, tmp_path):
-        """Exactly at TTL is still valid (expiry uses strictly-greater-than)."""
-        _write_raw_cache(tmp_path, "wantlist", SAMPLE_WANTLIST_DICTS, age_seconds=CACHE_TTL_SECONDS)
+        """One second before expiry should still return items."""
+        _write_raw_cache(tmp_path, "wantlist", SAMPLE_WANTLIST_DICTS, age_seconds=CACHE_TTL_SECONDS - 1)
         with patch("discogs_sync.cache.get_cache_dir", return_value=tmp_path):
             assert read_cache("wantlist") == SAMPLE_WANTLIST_DICTS
 

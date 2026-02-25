@@ -168,15 +168,27 @@ discogs-sync marketplace search --artist "Radiohead" --album "OK Computer" --ver
 | `--currency` | Currency code (default: USD) |
 | `--max-versions` | Max versions to check per master (default: 25) |
 | `--details` | Include suggested prices by condition grade |
+| `--no-cache` | Bypass cache; fresh results are still written back to cache |
 | `--verbose` | Show detailed progress and API call logging |
 
 ## Caching
 
-`wantlist list` and `collection list` cache fetched results locally for **1 hour** to avoid redundant API calls when re-running with different `--search` filters.
+`wantlist list`, `collection list`, and `marketplace search` (single-item) cache fetched results locally for **1 hour** to avoid redundant API calls.
+
+### Wantlist / Collection
 
 - Cache files are stored in `~/.discogs-sync/` as `wantlist_cache.json` and `collection_cache.json`.
 - The collection cache only applies when `--folder-id` is the default (`0` / All). Non-default folder IDs always fetch live.
 - Any `add`, `remove`, or `sync` command automatically invalidates the relevant cache.
+
+### Marketplace
+
+- Results are cached using MD5-hashed keys based on the lookup parameters (artist, album, format, country, currency, etc.).
+- `--details` (condition grade price suggestions) is handled via a separate **details cache** entry: when `--details` is requested and only the base cache is warm, the tool fetches just the price-suggestion data and writes a details cache entry — no full re-search needed.
+- Batch mode (`marketplace search <file>`) never reads or writes the cache.
+
+### General
+
 - Pass `--no-cache` to force a fresh fetch. The result is still written to cache so the next call benefits.
 
 ## Release Matching

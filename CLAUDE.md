@@ -97,17 +97,36 @@ The `wantlist list` and `collection list` commands support `--search` for client
 
 ### Caching
 
-`wantlist list` and `collection list` use a file-based TTL cache (1 hour) stored in `~/.discogs-sync/` alongside `config.json`:
+All three list/search commands use a file-based TTL cache (1 hour) stored in `~/.discogs-sync/` alongside `config.json`.
+
+#### Wantlist / Collection
 
 - **`wantlist_cache.json`** — cached wantlist items
 - **`collection_cache.json`** — cached collection items (folder 0 / All only; non-zero `--folder-id` always fetches live)
+
+All mutating commands (`add`, `remove`, `sync`) call `invalidate_cache()` after completing. `WantlistItem` and `CollectionItem` both have `from_dict()` classmethods to reconstruct typed objects from cached dicts.
+
+#### Marketplace
+
+`marketplace search` (single-item only; batch mode never caches) uses MD5-hashed cache keys via `marketplace_cache_name(cache_type, *key_parts)` in `cache.py`. Three key types:
+- `"release"` — keyed on `release_id + currency`
+- `"master"` — keyed on `master_id + fmt + country + currency + max_versions`
+- `"artist"` — keyed on `artist + album + fmt + country + currency + max_versions + threshold`
+
+The `--details` flag uses a **two-layer cache**:
+- **Base cache** (`marketplace_{type}_{md5}`) — stores results *without* `price_suggestions`
+- **Details cache** (`marketplace_{type}_{md5}_details`) — stores results *with* `price_suggestions`
+
+When `--details` is requested: try details cache → try base cache + call `fetch_price_suggestions_for_results()` for just the `price_suggestions` data → fall back to full fetch. `--details` is NOT part of the hash key, so the same base entry is shared. `MarketplaceResult` has a `from_dict()` classmethod.
+
+#### Cache API
 
 Cache logic lives in `cache.py` and exposes three functions used by `cli.py`:
 - `read_cache(name)` → `list[dict] | None` — returns items if age < 3600s, else `None`
 - `write_cache(name, items)` — writes `{"cached_at": "<utc-iso>", "items": [...]}` to disk (non-fatal on failure)
 - `invalidate_cache(name)` — deletes the cache file (silent no-op if absent)
 
-All mutating commands (`add`, `remove`, `sync`) call `invalidate_cache()` after completing. `--no-cache` skips the cache read but still writes fresh results back. `WantlistItem` and `CollectionItem` both have `from_dict()` classmethods to reconstruct typed objects from cached dicts.
+`--no-cache` skips the cache read but still writes fresh results back (applies to wantlist list, collection list, and marketplace search single-item).
 
 ## Key Conventions
 
