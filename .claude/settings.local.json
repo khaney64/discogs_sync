@@ -18,7 +18,9 @@
       "Bash(ls -la \"C:\\\\development\\\\ai\\\\discogs\\\\.claude\"\" 2>/dev/null || echo \".claude directory not found \")",
       "Bash(pytest:*)",
       "Bash(pip3 install:*)",
-      "Bash(tail:*)"
+      "Bash(tail:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(.venv/bin/python:*)"
     ]
   }
 }

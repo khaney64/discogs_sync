@@ -20,6 +20,35 @@ if TYPE_CHECKING:
 
 DEFAULT_MAX_VERSIONS = 25
 
+
+def _extract_lowest_price(stats) -> float | None:
+    """Extract lowest_price as a float from marketplace stats.
+
+    Handles the various forms the Discogs API may return:
+    - MarketplaceStats object with a Price object (has .value)
+    - Price object wrapping a raw numeric .data (no .value)
+    - Plain dict
+    - Raw number
+    """
+    lp = None
+    if hasattr(stats, "lowest_price"):
+        lp = stats.lowest_price
+    elif isinstance(stats, dict):
+        lp = stats.get("lowest_price")
+
+    if lp is None:
+        return None
+
+    if hasattr(lp, "value"):
+        return float(lp.value)
+    if isinstance(lp, dict):
+        return float(lp.get("value", 0))
+    if isinstance(lp, (int, float)):
+        return float(lp)
+    if hasattr(lp, "data") and isinstance(lp.data, (int, float)):
+        return float(lp.data)
+    return float(str(lp))
+
 # Module-level flag to skip price_suggestions after a "seller settings" 404.
 # Reset at the start of each search_marketplace call.
 _skip_price_suggestions = False
@@ -234,29 +263,12 @@ def search_marketplace(
                 stats = _api_call_with_retry(lambda r=release: r.marketplace_stats, limiter, verbose=verbose, description=f"release({version_id}).marketplace_stats")
 
                 num_for_sale = 0
-                lowest_price = None
-
                 if hasattr(stats, "num_for_sale"):
                     num_for_sale = stats.num_for_sale or 0
                 elif isinstance(stats, dict):
                     num_for_sale = stats.get("num_for_sale", 0)
 
-                if hasattr(stats, "lowest_price"):
-                    lp = stats.lowest_price
-                    if lp is not None:
-                        if hasattr(lp, "value"):
-                            lowest_price = float(lp.value)
-                        elif isinstance(lp, dict):
-                            lowest_price = float(lp.get("value", 0))
-                        else:
-                            lowest_price = float(lp)
-                elif isinstance(stats, dict):
-                    lp = stats.get("lowest_price")
-                    if lp is not None:
-                        if isinstance(lp, dict):
-                            lowest_price = float(lp.get("value", 0))
-                        else:
-                            lowest_price = float(lp)
+                lowest_price = _extract_lowest_price(stats)
 
                 # Apply price filters
                 if min_price is not None and (lowest_price is None or lowest_price < min_price):
@@ -427,29 +439,12 @@ def _get_stats_for_release(
     stats = _api_call_with_retry(lambda: release.marketplace_stats, limiter, verbose=verbose, description=f"release({release_id}).marketplace_stats")
 
     num_for_sale = 0
-    lowest_price = None
-
     if hasattr(stats, "num_for_sale"):
         num_for_sale = stats.num_for_sale or 0
     elif isinstance(stats, dict):
         num_for_sale = stats.get("num_for_sale", 0)
 
-    if hasattr(stats, "lowest_price"):
-        lp = stats.lowest_price
-        if lp is not None:
-            if hasattr(lp, "value"):
-                lowest_price = float(lp.value)
-            elif isinstance(lp, dict):
-                lowest_price = float(lp.get("value", 0))
-            else:
-                lowest_price = float(lp)
-    elif isinstance(stats, dict):
-        lp = stats.get("lowest_price")
-        if lp is not None:
-            if isinstance(lp, dict):
-                lowest_price = float(lp.get("value", 0))
-            else:
-                lowest_price = float(lp)
+    lowest_price = _extract_lowest_price(stats)
 
     if min_price is not None and (lowest_price is None or lowest_price < min_price):
         return []
