@@ -7,32 +7,31 @@ description: >
   from their Discogs wantlist or collection, check what's on their wantlist, look up
   marketplace prices, or find what a record is selling for. Also supports bulk operations
   via CSV/JSON file input.
-metadata: {"openclaw":{"emoji":"🎵","requires":{"bins":["python3","pip3"]}}}
+metadata: {"openclaw":{"emoji":"🎵","requires":{"bins":["python3"]}}}
 ---
 
 # Discogs Sync — Wantlist, Collection & Marketplace CLI
 
 Add and remove albums from your Discogs wantlist or collection, search marketplace pricing, and list what you have. Identify albums by artist/album name, Discogs master ID, or release ID. For bulk operations, pass a CSV or JSON file.
 
-## Prerequisites
+## Runtime & Dependencies
 
-Python 3.10+ and the following packages are required:
+**Runtime:** Python 3.10+
 
-```bash
-pip install -r requirements.txt
-```
+**Python packages** (installed automatically on first run):
+- `python3-discogs-client>=2.8` — Discogs API client
+- `click>=8.1` — CLI framework
+- `rich>=13.0` — Terminal output formatting
 
-Or install directly:
+**Installation:** No manual `pip install` needed. On first run, `discogs-sync.py` creates a local `.deps/` virtual environment inside the skill directory and installs dependencies from `requirements.txt`. Subsequent runs reuse the existing venv. This works on macOS (including Homebrew Python), Linux, and Windows without requiring system-level package installation.
 
-```bash
-pip install "python3-discogs-client>=2.8" "click>=8.1" "rich>=13.0"
-```
+To force a clean reinstall of dependencies, delete the `.deps/` directory and run any command again.
 
 ## Quick Start
 
 ```bash
-# Authenticate (one-time setup)
-python discogs-sync.py auth
+# Authenticate (one-time setup — also installs dependencies on first run)
+python3 discogs-sync.py auth
 
 # Add an album to your wantlist by name
 python discogs-sync.py wantlist add --artist "Radiohead" --album "OK Computer"

@@ -7,6 +7,7 @@ build/
 *.egg
 .eggs/
 *.so
+.deps/
 .venv/
 venv/
 env/
