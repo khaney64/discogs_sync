@@ -173,7 +173,7 @@ discogs-sync marketplace search --artist "Radiohead" --album "OK Computer" --ver
 
 ## Caching
 
-`wantlist list`, `collection list`, and `marketplace search` (single-item) cache fetched results locally for **1 hour** to avoid redundant API calls.
+`wantlist list`, `collection list`, and `marketplace search` (single-item) cache fetched results locally for **24 hours** (default) to avoid redundant API calls. The TTL is configurable via `cache_ttl_hours` in `~/.discogs-sync/config.json`.
 
 ### Wantlist / Collection
 
@@ -190,6 +190,7 @@ discogs-sync marketplace search --artist "Radiohead" --album "OK Computer" --ver
 ### General
 
 - Pass `--no-cache` to force a fresh fetch. The result is still written to cache so the next call benefits.
+- To change the cache TTL, add `"cache_ttl_hours": <number>` to `~/.discogs-sync/config.json` (e.g. `0.5` for 30 minutes, `48` for 2 days). Defaults to `24`.
 
 ## Release Matching
 

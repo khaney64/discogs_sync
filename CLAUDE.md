@@ -100,7 +100,7 @@ The `wantlist list` and `collection list` commands support client-side filtering
 
 ### Caching
 
-All three list/search commands use a file-based TTL cache (1 hour) stored in `~/.discogs-sync/` alongside `config.json`.
+All three list/search commands use a file-based TTL cache stored in `~/.discogs-sync/` alongside `config.json`. The TTL defaults to **24 hours** and is configurable via `cache_ttl_hours` in `config.json` (accepts floats, e.g. `0.5` for 30 minutes).
 
 #### Wantlist / Collection
 
@@ -126,7 +126,7 @@ When `--details` is requested: try details cache → try base cache + call `fetc
 #### Cache API
 
 Cache logic lives in `cache.py` and exposes these functions used by `cli.py`:
-- `read_cache(name)` → `list[dict] | None` — returns items if age < 3600s, else `None`
+- `read_cache(name)` → `list[dict] | None` — returns items if age < TTL (from `get_cache_ttl()`), else `None`
 - `write_cache(name, items)` — writes `{"cached_at": "<utc-iso>", "items": [...]}` to disk (non-fatal on failure)
 - `invalidate_cache(name)` — deletes the cache file (silent no-op if absent)
 - `read_resolve_cache(artist, album, threshold)` → `{"master_id": int|None, "release_id": int|None} | None`

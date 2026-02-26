@@ -40,6 +40,20 @@ def save_config(config: dict) -> None:
         raise ConfigError(f"Failed to write config file {path}: {e}") from e
 
 
+def get_cache_ttl() -> int:
+    """Return the cache TTL in seconds.
+
+    Reads ``cache_ttl_hours`` from the config file. If not set, defaults to
+    24 hours (86400 seconds). The value may be a float (e.g. 0.5 for 30 minutes).
+    """
+    config = load_config()
+    hours = config.get("cache_ttl_hours", 24)
+    try:
+        return int(float(hours) * 3600)
+    except (TypeError, ValueError):
+        return 86400
+
+
 def get_auth_mode() -> str:
     """Return the configured auth mode ('token' or 'oauth'). Defaults to 'token'."""
     config = load_config()

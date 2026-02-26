@@ -7,7 +7,9 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-CACHE_TTL_SECONDS = 3600  # 1 hour
+from .config import get_cache_ttl
+
+CACHE_TTL_SECONDS = 86400  # 24 hours (default; overridable via cache_ttl_hours in config)
 
 
 def get_cache_dir() -> Path:
@@ -36,7 +38,7 @@ def read_cache(name: str) -> list[dict] | None:
         cached_at = datetime.fromisoformat(data["cached_at"])
         now = datetime.now(timezone.utc)
         age = (now - cached_at).total_seconds()
-        if age > CACHE_TTL_SECONDS:
+        if age > get_cache_ttl():
             return None
         return data["items"]
     except (KeyError, ValueError, json.JSONDecodeError, OSError):
@@ -105,7 +107,7 @@ def cleanup_expired_caches() -> int:
             data = json.loads(path.read_text(encoding="utf-8"))
             cached_at = datetime.fromisoformat(data["cached_at"])
             age = (now - cached_at).total_seconds()
-            if age <= CACHE_TTL_SECONDS:
+            if age <= get_cache_ttl():
                 continue  # still valid — keep it
         except (KeyError, ValueError, json.JSONDecodeError, OSError):
             pass  # treat unreadable/corrupt files as expired
