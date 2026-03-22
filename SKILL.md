@@ -31,22 +31,22 @@ To force a clean reinstall of dependencies, delete the `.deps/` directory and ru
 
 ```bash
 # Authenticate (one-time setup — also installs dependencies on first run)
-python3 discogs-sync.py auth
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py auth
 
 # Add an album to your wantlist by name
-python discogs-sync.py wantlist add --artist "Radiohead" --album "OK Computer"
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist add --artist "Radiohead" --album "OK Computer"
 
 # Add to your collection by release ID
-python discogs-sync.py collection add --release-id 7890
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection add --release-id 7890
 
 # Check marketplace prices for a vinyl pressing
-python discogs-sync.py marketplace search --artist "Miles Davis" --album "Kind of Blue" --format Vinyl
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py marketplace search --artist "Miles Davis" --album "Kind of Blue" --format Vinyl
 
 # List your wantlist
-python discogs-sync.py wantlist list
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist list
 
 # Remove from collection
-python discogs-sync.py collection remove --artist "Nirvana" --album "Nevermind"
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection remove --artist "Nirvana" --album "Nevermind"
 ```
 
 ## Authentication
@@ -56,22 +56,22 @@ Run once to authenticate. Two modes are available:
 **Personal access token (default)** — simplest option. Generate a token at https://www.discogs.com/settings/developers.
 
 ```bash
-python discogs-sync.py auth
-python discogs-sync.py auth --mode token
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py auth
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py auth --mode token
 ```
 
 **OAuth 1.0a** — full OAuth flow with consumer key/secret, for apps that need delegated access.
 
 ```bash
-python discogs-sync.py auth --mode oauth
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py auth --mode oauth
 ```
 
 Credentials are stored in `~/.discogs-sync/config.json`.
 
 ```bash
 # Verify authentication
-python discogs-sync.py whoami
-python discogs-sync.py whoami --output-format json
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py whoami
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py whoami --output-format json
 ```
 
 ## Usage
@@ -80,22 +80,22 @@ python discogs-sync.py whoami --output-format json
 
 ```bash
 # Add by artist/album name
-python discogs-sync.py wantlist add --artist "Radiohead" --album "OK Computer" [--format Vinyl]
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist add --artist "Radiohead" --album "OK Computer" [--format Vinyl]
 
 # Add by Discogs master ID (resolves to main release, or filters by --format)
-python discogs-sync.py wantlist add --master-id 3425
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist add --master-id 3425
 
 # Add by specific release ID
-python discogs-sync.py wantlist add --release-id 7890
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist add --release-id 7890
 
 # Remove by artist/album name
-python discogs-sync.py wantlist remove --artist "Radiohead" --album "OK Computer"
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist remove --artist "Radiohead" --album "OK Computer"
 
 # Remove by release ID
-python discogs-sync.py wantlist remove --release-id 7890
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist remove --release-id 7890
 
 # List current wantlist
-python discogs-sync.py wantlist list [--search "QUERY"] [--format Vinyl] [--year 1997] [--no-cache] [--output-format json]
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist list [--search "QUERY"] [--format Vinyl] [--year 1997] [--no-cache] [--output-format json]
 ```
 
 Duplicate check: skips if the release is already in the wantlist (by release_id, master_id, or fuzzy artist+title match).
@@ -104,23 +104,23 @@ Duplicate check: skips if the release is already in the wantlist (by release_id,
 
 ```bash
 # Add by artist/album name
-python discogs-sync.py collection add --artist "Miles Davis" --album "Kind of Blue" [--format Vinyl]
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection add --artist "Miles Davis" --album "Kind of Blue" [--format Vinyl]
 
 # Add by master ID or release ID
-python discogs-sync.py collection add --master-id 3425 [--folder-id 1]
-python discogs-sync.py collection add --release-id 7890 [--folder-id 1]
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection add --master-id 3425 [--folder-id 1]
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection add --release-id 7890 [--folder-id 1]
 
 # Add a second copy of something already owned
-python discogs-sync.py collection add --release-id 7890 --allow-duplicate
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection add --release-id 7890 --allow-duplicate
 
 # Remove by artist/album name
-python discogs-sync.py collection remove --artist "Miles Davis" --album "Kind of Blue"
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection remove --artist "Miles Davis" --album "Kind of Blue"
 
 # Remove by release ID
-python discogs-sync.py collection remove --release-id 7890
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection remove --release-id 7890
 
 # List collection (all folders)
-python discogs-sync.py collection list [--search "QUERY"] [--format CD] [--year 1959] [--folder-id 0] [--no-cache] [--output-format json]
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection list [--search "QUERY"] [--format CD] [--year 1959] [--folder-id 0] [--no-cache] [--output-format json]
 ```
 
 Duplicate check: by default, `add` skips if the release is already in the collection (by release_id, master_id, or fuzzy artist+title match). Use `--allow-duplicate` to add another copy.
@@ -129,19 +129,19 @@ Duplicate check: by default, `add` skips if the release is already in the collec
 
 ```bash
 # Search by artist/album name
-python discogs-sync.py marketplace search --artist "Radiohead" --album "OK Computer" [--format Vinyl] [--country US] [--output-format json]
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py marketplace search --artist "Radiohead" --album "OK Computer" [--format Vinyl] [--country US] [--output-format json]
 
 # Search by master ID
-python discogs-sync.py marketplace search --master-id 3425 [--format Vinyl] [--country US]
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py marketplace search --master-id 3425 [--format Vinyl] [--country US]
 
 # Search by specific release ID (skips master version scan)
-python discogs-sync.py marketplace search --release-id 7890
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py marketplace search --release-id 7890
 
 # Filter by price range and country
-python discogs-sync.py marketplace search --artist "Pink Floyd" --album "The Dark Side of the Moon" --format Vinyl --country US --min-price 10 --max-price 50 --currency USD
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py marketplace search --artist "Pink Floyd" --album "The Dark Side of the Moon" --format Vinyl --country US --min-price 10 --max-price 50 --currency USD
 
 # Show detailed progress and condition grade price suggestions
-python discogs-sync.py marketplace search --artist "Radiohead" --album "OK Computer" --verbose --details
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py marketplace search --artist "Radiohead" --album "OK Computer" --verbose --details
 ```
 
 Returns release versions sorted by lowest price, with number of copies for sale. Single-item results are cached for 1 hour by lookup parameters. With `--details`, a separate details cache entry is used; if only the base cache is warm the tool fetches just the condition-grade price suggestions rather than re-running the full search. Pass `--no-cache` to force a live fetch (result is still written to cache).
@@ -152,14 +152,14 @@ For batch operations, pass a CSV or JSON file instead of individual `--artist`/`
 
 ```bash
 # Sync wantlist from file (preview first with --dry-run)
-python discogs-sync.py wantlist sync albums.csv --dry-run
-python discogs-sync.py wantlist sync albums.csv [--remove-extras] [--threshold 0.7] [--output-format json]
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist sync albums.csv --dry-run
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist sync albums.csv [--remove-extras] [--threshold 0.7] [--output-format json]
 
 # Sync collection from file
-python discogs-sync.py collection sync albums.csv [--folder-id 1] [--remove-extras] [--dry-run]
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection sync albums.csv [--folder-id 1] [--remove-extras] [--dry-run]
 
 # Batch marketplace search from file
-python discogs-sync.py marketplace search albums.csv [--format Vinyl] [--country US] [--max-price 50] [--max-versions 25] [--output-format json]
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py marketplace search albums.csv [--format Vinyl] [--country US] [--max-price 50] [--max-versions 25] [--output-format json]
 ```
 
 **CSV format** (header row required, `artist` and `album` required):
@@ -349,7 +349,7 @@ When using `--master-id` or `--release-id`, no search is needed — the ID is us
 
 ## Notes
 
-- Authentication supports personal access tokens (default) and OAuth 1.0a. Run `python discogs-sync.py auth` once.
+- Authentication supports personal access tokens (default) and OAuth 1.0a. Run `python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py auth` once.
 - The Discogs API is rate-limited to 60 requests/minute for authenticated users. The tool throttles automatically — no manual pacing needed.
 - Batch operations are resilient: individual item failures are collected and reported without aborting the entire batch.
 - Use `--dry-run` before any sync to preview what would change. This makes no API writes.
