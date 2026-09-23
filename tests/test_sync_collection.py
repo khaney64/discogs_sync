@@ -72,6 +72,45 @@ class TestSyncCollection:
         assert report.added == 1
         assert report.actions[0].reason == "Dry run"
 
+    @patch("discogs_sync.sync_collection._remove_from_collection")
+    @patch("discogs_sync.sync_collection._get_collection_release_ids")
+    @patch("discogs_sync.sync_collection.resolve_to_release_id")
+    @patch("discogs_sync.sync_collection.search_release")
+    def test_unconfirmed_remove_extras_counts_instances(self, mock_search, mock_resolve, mock_get_ids, mock_remove):
+        from discogs_sync.exceptions import SyncError
+        from discogs_sync.models import SearchResult
+
+        record = InputRecord(artist="Miles Davis", album="Kind of Blue")
+        mock_search.return_value = SearchResult(
+            input_record=record, release_id=456, matched=True, score=0.9,
+        )
+        mock_resolve.return_value = 456
+        mock_get_ids.return_value = ({456: [1], 789: [2, 3]}, set(), [])
+
+        with pytest.raises(SyncError, match="would delete 2 item"):
+            sync_collection(MagicMock(), [record], remove_extras=True)
+
+        mock_remove.assert_not_called()
+
+    @patch("discogs_sync.sync_collection._remove_from_collection")
+    @patch("discogs_sync.sync_collection._get_collection_release_ids")
+    @patch("discogs_sync.sync_collection.resolve_to_release_id")
+    @patch("discogs_sync.sync_collection.search_release")
+    def test_confirmed_remove_extras_removes_every_instance(self, mock_search, mock_resolve, mock_get_ids, mock_remove):
+        from discogs_sync.models import SearchResult
+
+        record = InputRecord(artist="Miles Davis", album="Kind of Blue")
+        mock_search.return_value = SearchResult(
+            input_record=record, release_id=456, matched=True, score=0.9,
+        )
+        mock_resolve.return_value = 456
+        mock_get_ids.return_value = ({456: [1], 789: [2, 3]}, set(), [])
+
+        report = sync_collection(MagicMock(), [record], remove_extras=True, confirm_removals=True)
+
+        assert report.removed == 2
+        assert mock_remove.call_count == 2
+
 
 class TestAddToCollection:
     @patch("discogs_sync.sync_collection._add_to_collection")

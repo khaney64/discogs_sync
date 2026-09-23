@@ -15,23 +15,26 @@ pip install -e ".[dev]"
 
 ## Setup
 
-### 1. Create a Discogs Application
+### 1. Generate a Personal Access Token
 
 1. Go to https://www.discogs.com/settings/developers
-2. Click "Generate new token" or "Register a new application"
-3. Note your **Consumer Key** and **Consumer Secret**
+2. Click "Generate new token"
 
 ### 2. Authenticate
+
+Either set the token in the environment (takes precedence):
+
+```bash
+export DISCOGS_USER_TOKEN=your-token
+```
+
+or store it once:
 
 ```bash
 discogs-sync auth
 ```
 
-This will:
-- Prompt for your consumer key and secret
-- Open a Discogs authorization URL
-- Ask you to paste the callback URL after authorizing
-- Store tokens in `~/.discogs-sync/config.json`
+`auth` prompts for the token (input hidden), validates it, and stores it in `~/.discogs-sync/config.json` with owner-only permissions.
 
 ### 3. Verify
 
@@ -75,7 +78,7 @@ The following synonyms are automatically normalized:
 ### Authentication
 
 ```bash
-discogs-sync auth                          # Run OAuth flow
+discogs-sync auth                          # Store a personal access token
 discogs-sync whoami [--output-format json] # Show authenticated user
 ```
 
@@ -83,7 +86,7 @@ discogs-sync whoami [--output-format json] # Show authenticated user
 
 ```bash
 # Batch sync from file
-discogs-sync wantlist sync <file> [--remove-extras] [--dry-run] [--threshold 0.7] [--output-format json]
+discogs-sync wantlist sync <file> [--remove-extras] [--yes] [--dry-run] [--threshold 0.7] [--output-format json]
 
 # Add individual items
 discogs-sync wantlist add --artist "Radiohead" --album "OK Computer" [--format Vinyl]
@@ -102,7 +105,7 @@ discogs-sync wantlist list [--search "radiohead"] [--no-cache] [--output-format 
 
 ```bash
 # Batch sync from file
-discogs-sync collection sync <file> [--folder-id 1] [--remove-extras] [--dry-run] [--threshold 0.7] [--output-format json]
+discogs-sync collection sync <file> [--folder-id 1] [--remove-extras] [--yes] [--dry-run] [--threshold 0.7] [--output-format json]
 
 # Add individual items
 discogs-sync collection add --artist "Radiohead" --album "OK Computer" [--format Vinyl] [--allow-duplicate]
@@ -150,7 +153,8 @@ discogs-sync marketplace search --artist "Radiohead" --album "OK Computer" --ver
 
 | Option | Description |
 |--------|-------------|
-| `--remove-extras` | Remove items not in the input file |
+| `--remove-extras` | Remove items not in the input file (requires `--dry-run` or `--yes`; aborts if any input record fails to resolve) |
+| `--yes` | Confirm deletions made by `--remove-extras` |
 | `--folder-id` | Collection folder ID (default: 1 for adds, 0 for reads) |
 | `--allow-duplicate` | Allow adding duplicate copies to collection |
 | `--search` | Client-side filter for `list` commands (case-insensitive substring match on artist, title, year) |

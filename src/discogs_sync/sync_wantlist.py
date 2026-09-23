@@ -37,12 +37,16 @@ def sync_wantlist(
     dry_run: bool = False,
     threshold: float = 0.7,
     verbose: bool = False,
+    confirm_removals: bool = False,
 ) -> SyncReport:
     """Sync a list of input records to the user's wantlist.
 
     1. Resolve each record to a release_id
     2. Fetch current wantlist
     3. Diff and apply changes
+
+    With remove_extras (and not dry_run), raises SyncError before any change is
+    made if an input record failed to resolve or if confirm_removals is False.
     """
     report = SyncReport(total_input=len(records))
     limiter = get_rate_limiter()
@@ -100,6 +104,10 @@ def sync_wantlist(
     current_ids, current_masters, current_items = _get_wantlist_release_ids(client, limiter)
     if verbose:
         print_verbose(f"Current wantlist has {len(current_ids)} items, {len(current_masters)} unique masters")
+
+    if remove_extras and not dry_run:
+        pending = len(current_ids - {result.release_id for _, result in resolved})
+        check_remove_extras_allowed(report, pending, confirm_removals)
 
     # Step 3: Diff
     target_ids = set()
@@ -204,6 +212,25 @@ def sync_wantlist(
     return report
 
 
+def check_remove_extras_allowed(report: SyncReport, pending_removals: int, confirm_removals: bool) -> None:
+    """Refuse a --remove-extras run that is unconfirmed or based on incomplete input.
+
+    An input record that failed to resolve would make its real item look like an
+    extra, so any resolution error blocks removals.
+    """
+    if report.errors:
+        raise SyncError(
+            f"--remove-extras aborted: {report.errors} input record(s) failed to resolve, "
+            "so their existing items would be removed. Fix the input or drop --remove-extras. "
+            "No changes were made."
+        )
+    if pending_removals and not confirm_removals:
+        raise SyncError(
+            f"--remove-extras would delete {pending_removals} item(s). "
+            "Re-run with --dry-run to preview, then add --yes to confirm. No changes were made."
+        )
+
+
 def add_to_wantlist(
     client: discogs_client.Client,
     release_id: int | None = None,
@@ -278,6 +305,7 @@ def remove_from_wantlist(
             reason="Not in wantlist",
         )
 
+    print_info(f"Removing release_id={release_id} from wantlist")
     _remove_from_wantlist(client, release_id, limiter)
 
     return SyncAction(

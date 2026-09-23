@@ -25,7 +25,7 @@ Build backend is `setuptools.build_meta` (not `setuptools.backends._legacy:_Back
 
 ## Running Without pip install
 
-`discogs-sync.py` at the project root is a thin entry point that bootstraps `sys.path` and calls `cli.main()`. No pip install required:
+`discogs-sync.py` at the project root is a thin entry point: it adds `~/.discogs-sync/venv` site-packages (if present) and `src/` to the import path, checks that dependencies are importable (exit 2 with install instructions if not), and calls `cli.main()`. It must never install packages, spawn processes, or use `exec`/`eval`/`__import__` — ClawHub's SkillSpector scanner flags those:
 
 ```bash
 python discogs-sync.py wantlist list --output-format json
@@ -37,7 +37,7 @@ This is the invocation style used by the OpenClaw skill (`SKILL.md`).
 
 ```
 CLI (cli.py) → Click command groups
-  ├── auth.py / config.py / client_factory.py  → OAuth + personal token + credential storage
+  ├── auth.py / config.py / client_factory.py  → personal token (DISCOGS_USER_TOKEN env, else config.json)
   ├── sync_wantlist.py / sync_collection.py    → add/remove/list/sync
   ├── marketplace.py                           → pricing via master versions
   ├── search.py                                → multi-pass release matching
@@ -86,6 +86,8 @@ Duplicate detection uses a three-tier check:
 The fuzzy match uses `_similarity()` from `search.py` (`difflib.SequenceMatcher`, case-insensitive). Threshold constant: `FUZZY_MATCH_THRESHOLD = 0.85` in both sync modules.
 
 Each item produces a `SyncAction` (ADD/REMOVE/SKIP/ERROR). Individual failures don't abort the batch. `SyncReport` aggregates actions and computes exit code (0=success, 1=partial, 2=complete failure).
+
+`--remove-extras` guard: after steps 1–2 and before any write, `check_remove_extras_allowed()` (in `sync_wantlist.py`, shared by collection) raises `SyncError` if any input record failed to resolve, or if there are removals and `confirm_removals` (CLI `--yes`) is false. `--dry-run` skips the guard.
 
 Collection differs from wantlist: uses folder_id (default 1 for adds, 0 for reads), removing requires instance_id, and `--allow-duplicate` bypasses the duplicate check.
 

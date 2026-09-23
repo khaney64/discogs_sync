@@ -13,7 +13,7 @@ from .models import (
     SyncActionType,
     SyncReport,
 )
-from .output import print_verbose
+from .output import print_info, print_verbose
 from .parsers import extract_artist_from_data
 from .rate_limiter import get_rate_limiter
 from .search import (
@@ -23,6 +23,7 @@ from .search import (
     resolve_to_release_id,
     search_release,
 )
+from .sync_wantlist import check_remove_extras_allowed
 
 if TYPE_CHECKING:
     import discogs_client
@@ -40,8 +41,13 @@ def sync_collection(
     dry_run: bool = False,
     threshold: float = 0.7,
     verbose: bool = False,
+    confirm_removals: bool = False,
 ) -> SyncReport:
-    """Sync a list of input records to the user's collection."""
+    """Sync a list of input records to the user's collection.
+
+    With remove_extras (and not dry_run), raises SyncError before any change is
+    made if an input record failed to resolve or if confirm_removals is False.
+    """
     report = SyncReport(total_input=len(records))
     limiter = get_rate_limiter()
 
@@ -98,6 +104,11 @@ def sync_collection(
     current, current_masters, current_items = _get_collection_release_ids(client, DEFAULT_READ_FOLDER, limiter)
     if verbose:
         print_verbose(f"Current collection has {len(current)} unique releases, {len(current_masters)} unique masters")
+
+    if remove_extras and not dry_run:
+        extras = set(current.keys()) - {result.release_id for _, result in resolved}
+        pending = sum(len(current[release_id]) for release_id in extras)
+        check_remove_extras_allowed(report, pending, confirm_removals)
 
     # Step 3: Diff
     target_ids = set()
@@ -282,6 +293,7 @@ def remove_from_collection(
 
     # Remove first instance
     instance_id = current[release_id][0]
+    print_info(f"Removing release_id={release_id} (instance {instance_id}) from collection")
     _remove_from_collection(client, release_id, instance_id, folder_id, limiter)
 
     return SyncAction(
