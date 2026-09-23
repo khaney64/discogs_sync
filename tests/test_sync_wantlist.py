@@ -235,10 +235,27 @@ class TestRemoveFromWantlist:
         mock_get_ids.return_value = ({123}, {3425}, [("Radiohead", "OK Computer", 123)])
         client = MagicMock()
 
-        action = remove_from_wantlist(client, release_id=123)
+        action = remove_from_wantlist(client, release_id=123, confirm=True)
 
         assert action.action == SyncActionType.REMOVE
+        assert (action.artist, action.title) == ("Radiohead", "OK Computer")
         mock_remove.assert_called_once()
+
+    @patch("discogs_sync.sync_wantlist._remove_from_wantlist")
+    @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
+    def test_unconfirmed_remove_previews_without_removing(self, mock_get_ids, mock_remove):
+        from discogs_sync.exceptions import ConfirmationRequiredError
+
+        mock_get_ids.return_value = ({123}, {3425}, [("Radiohead", "OK Computer", 123)])
+
+        with pytest.raises(ConfirmationRequiredError) as exc:
+            remove_from_wantlist(MagicMock(), release_id=123)
+
+        assert exc.value.preview == {
+            "action": "remove", "target": "wantlist",
+            "release_id": 123, "artist": "Radiohead", "title": "OK Computer",
+        }
+        mock_remove.assert_not_called()
 
     @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
     def test_remove_nonexistent(self, mock_get_ids):
@@ -547,6 +564,24 @@ class TestWantlistCacheInvalidation:
             action=SyncActionType.REMOVE, release_id=123, artist="Radiohead", title="OK Computer",
         )
         runner = CliRunner()
-        result = runner.invoke(main, ["wantlist", "remove", "--release-id", "123"])
+        result = runner.invoke(main, ["wantlist", "remove", "--release-id", "123", "--yes"])
         assert result.exit_code == 0
+        assert mock_remove.call_args.kwargs["confirm"] is True
         mock_invalidate.assert_called_once_with("wantlist")
+
+    @patch("discogs_sync.cache.invalidate_cache")
+    @patch("discogs_sync.sync_wantlist._remove_from_wantlist")
+    @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
+    @patch("discogs_sync.client_factory.build_client")
+    def test_remove_without_yes_exits_2_with_json_preview(self, _mock_client, mock_get_ids, mock_remove, mock_invalidate):
+        """wantlist remove without --yes refuses, previews the target, and changes nothing."""
+        mock_get_ids.return_value = ({123}, {3425}, [("Radiohead", "OK Computer", 123)])
+        runner = CliRunner()
+        result = runner.invoke(main, ["wantlist", "remove", "--release-id", "123", "--output-format", "json"])
+
+        assert result.exit_code == 2
+        preview = json.loads(result.stdout)
+        assert preview["confirmation_required"] is True
+        assert preview["title"] == "OK Computer"
+        mock_remove.assert_not_called()
+        mock_invalidate.assert_not_called()

@@ -6,7 +6,7 @@ import sys
 
 import click
 
-from .exceptions import AuthenticationError, DiscogsSyncError
+from .exceptions import AuthenticationError, ConfirmationRequiredError, DiscogsSyncError
 
 
 def _matches_search(item, query: str) -> bool:
@@ -16,6 +16,16 @@ def _matches_search(item, query: str) -> bool:
     title = (item.title or "").lower()
     year = str(item.year) if getattr(item, "year", None) else ""
     return q in artist or q in title or q in year
+
+
+def _exit_confirmation_required(error: ConfirmationRequiredError, output_format: str) -> None:
+    """Report a refused (unconfirmed) removal with its preview and exit 2."""
+    from .output import output_json, print_error
+
+    print_error(str(error))
+    if output_format == "json":
+        output_json({"confirmation_required": True, **error.preview})
+    sys.exit(2)
 
 
 @click.group()
@@ -99,6 +109,8 @@ def wantlist_sync(file, remove_extras, confirm_removals, dry_run, threshold, ver
         from .cache import invalidate_cache
         invalidate_cache("wantlist")
         sys.exit(report.exit_code)
+    except ConfirmationRequiredError as e:
+        _exit_confirmation_required(e, output_format)
     except DiscogsSyncError as e:
         print_error(str(e))
         sys.exit(2)
@@ -145,8 +157,9 @@ def wantlist_add(artist, album, fmt, master_id, release_id, threshold, output_fo
 @click.option("--album", help="Album title")
 @click.option("--release-id", type=int, help="Discogs release ID")
 @click.option("--threshold", type=float, default=0.7, help="Match score threshold")
+@click.option("--yes", "confirm", is_flag=True, help="Confirm the removal (without it, only previews)")
 @click.option("--output-format", type=click.Choice(["table", "json"]), default="table")
-def wantlist_remove(artist, album, release_id, threshold, output_format):
+def wantlist_remove(artist, album, release_id, threshold, confirm, output_format):
     """Remove a release from the wantlist."""
     from .client_factory import build_client
     from .output import output_sync_report, print_error
@@ -161,6 +174,7 @@ def wantlist_remove(artist, album, release_id, threshold, output_format):
         client = build_client()
         action = remove_from_wantlist(
             client, release_id=release_id, artist=artist, album=album, threshold=threshold,
+            confirm=confirm,
         )
         report = SyncReport(total_input=1)
         report.add_action(action)
@@ -168,6 +182,8 @@ def wantlist_remove(artist, album, release_id, threshold, output_format):
         from .cache import invalidate_cache
         invalidate_cache("wantlist")
         sys.exit(report.exit_code)
+    except ConfirmationRequiredError as e:
+        _exit_confirmation_required(e, output_format)
     except DiscogsSyncError as e:
         print_error(str(e))
         sys.exit(2)
@@ -248,6 +264,8 @@ def collection_sync(file, folder_id, remove_extras, confirm_removals, dry_run, t
         from .cache import invalidate_cache
         invalidate_cache("collection")
         sys.exit(report.exit_code)
+    except ConfirmationRequiredError as e:
+        _exit_confirmation_required(e, output_format)
     except DiscogsSyncError as e:
         print_error(str(e))
         sys.exit(2)
@@ -297,8 +315,9 @@ def collection_add(artist, album, fmt, master_id, release_id, folder_id, allow_d
 @click.option("--album", help="Album title")
 @click.option("--release-id", type=int, help="Discogs release ID")
 @click.option("--threshold", type=float, default=0.7, help="Match score threshold")
+@click.option("--yes", "confirm", is_flag=True, help="Confirm the removal (without it, only previews)")
 @click.option("--output-format", type=click.Choice(["table", "json"]), default="table")
-def collection_remove(artist, album, release_id, threshold, output_format):
+def collection_remove(artist, album, release_id, threshold, confirm, output_format):
     """Remove a release from the collection."""
     from .client_factory import build_client
     from .output import output_sync_report, print_error
@@ -313,6 +332,7 @@ def collection_remove(artist, album, release_id, threshold, output_format):
         client = build_client()
         action = remove_from_collection(
             client, release_id=release_id, artist=artist, album=album, threshold=threshold,
+            confirm=confirm,
         )
         report = SyncReport(total_input=1)
         report.add_action(action)
@@ -320,6 +340,8 @@ def collection_remove(artist, album, release_id, threshold, output_format):
         from .cache import invalidate_cache
         invalidate_cache("collection")
         sys.exit(report.exit_code)
+    except ConfirmationRequiredError as e:
+        _exit_confirmation_required(e, output_format)
     except DiscogsSyncError as e:
         print_error(str(e))
         sys.exit(2)

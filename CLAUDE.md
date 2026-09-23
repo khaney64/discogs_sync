@@ -87,7 +87,10 @@ The fuzzy match uses `_similarity()` from `search.py` (`difflib.SequenceMatcher`
 
 Each item produces a `SyncAction` (ADD/REMOVE/SKIP/ERROR). Individual failures don't abort the batch. `SyncReport` aggregates actions and computes exit code (0=success, 1=partial, 2=complete failure).
 
-`--remove-extras` guard: after steps 1–2 and before any write, `check_remove_extras_allowed()` (in `sync_wantlist.py`, shared by collection) raises `SyncError` if any input record failed to resolve, or if there are removals and `confirm_removals` (CLI `--yes`) is false. `--dry-run` skips the guard.
+Removal confirmation: every destructive entry point requires explicit confirmation, enforced in the mutation functions (not just the CLI):
+- `remove_from_wantlist(..., confirm=)` / `remove_from_collection(..., confirm=)` resolve the target, then raise `ConfirmationRequiredError` (with a `preview` dict: release_id, artist, title, plus instance_id/copies_owned for collection) unless `confirm=True`.
+- `sync_*(..., confirm_removals=)` with `--remove-extras`: after steps 1–2 and before any write, `check_remove_extras_allowed()` (in `sync_wantlist.py`, shared by collection) raises `SyncError` if any input record failed to resolve, or `ConfirmationRequiredError` if there are removals and `confirm_removals` is false. `--dry-run` skips the guard.
+- CLI `--yes` maps to these flags. `_exit_confirmation_required()` in `cli.py` prints the refusal, emits the preview as JSON with `--output-format json`, and exits 2.
 
 Collection differs from wantlist: uses folder_id (default 1 for adds, 0 for reads), removing requires instance_id, and `--allow-duplicate` bypasses the duplicate check.
 

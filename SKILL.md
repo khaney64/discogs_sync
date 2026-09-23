@@ -41,9 +41,10 @@ python3 -m venv ~/.discogs-sync/venv
 - **Processes:** none. No subprocess, shell, `exec`, or `eval`; no packages are installed at runtime.
 - **Credentials:** one Discogs personal access token, read from `DISCOGS_USER_TOKEN` or from `~/.discogs-sync/config.json` (created owner-only). The token is never printed or logged. Revoke it at https://www.discogs.com/settings/developers if compromised.
 
-**Agent rules for destructive operations:**
-- Before running `wantlist remove`, `collection remove`, or any `sync` with `--remove-extras`, tell the user exactly what will be removed and get explicit confirmation.
-- Always run a sync with `--dry-run` first and show the result. Only add `--yes` after the user approves the listed removals.
+**Agent rules for destructive operations:** every removal (`wantlist remove`, `collection remove`, `sync --remove-extras`) is refused unless `--yes` is passed, and the refusal makes no changes.
+1. Run the command **without** `--yes` first (for sync, add `--dry-run`). It resolves the target and exits with code 2, reporting exactly what would be removed: artist, title, release ID, and for collections the instance ID and number of copies owned. With `--output-format json` this preview is printed as `{"confirmation_required": true, ...}`.
+2. Show that preview to the user and get explicit approval.
+3. Only then re-run the same command with `--yes`.
 - Never run `auth` on the user's behalf; it prompts for a secret and must be run by the user in a terminal.
 
 ## Quick Start
@@ -64,8 +65,9 @@ python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py marke
 # List your wantlist
 python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist list
 
-# Remove from collection
+# Remove from collection: preview (no change, exit 2), then confirm after user approval
 python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection remove --artist "Nirvana" --album "Nevermind"
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection remove --artist "Nirvana" --album "Nevermind" --yes
 ```
 
 ## Authentication
@@ -99,11 +101,11 @@ python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantl
 # Add by specific release ID
 python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist add --release-id 7890
 
-# Remove by artist/album name
-python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist remove --artist "Radiohead" --album "OK Computer"
+# Remove by artist/album name (without --yes this only previews the target)
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist remove --artist "Radiohead" --album "OK Computer" [--yes]
 
 # Remove by release ID
-python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist remove --release-id 7890
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist remove --release-id 7890 [--yes]
 
 # List current wantlist
 python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py wantlist list [--search "QUERY"] [--format Vinyl] [--year 1997] [--no-cache] [--output-format json]
@@ -124,11 +126,11 @@ python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py colle
 # Add a second copy of something already owned
 python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection add --release-id 7890 --allow-duplicate
 
-# Remove by artist/album name
-python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection remove --artist "Miles Davis" --album "Kind of Blue"
+# Remove by artist/album name (removes one copy; without --yes this only previews the target)
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection remove --artist "Miles Davis" --album "Kind of Blue" [--yes]
 
 # Remove by release ID
-python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection remove --release-id 7890
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection remove --release-id 7890 [--yes]
 
 # List collection (all folders)
 python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection list [--search "QUERY"] [--format CD] [--year 1959] [--folder-id 0] [--no-cache] [--output-format json]
@@ -219,7 +221,7 @@ Format synonyms are normalized automatically: `LP`/`record`/`12"` → Vinyl, `co
 | `--search` | list | Filter results by artist or title (case-insensitive substring match) |
 | `--dry-run` | sync | Preview changes without modifying Discogs |
 | `--remove-extras` | sync | Remove wantlist/collection items not in the input file (requires `--dry-run` or `--yes`) |
-| `--yes` | sync | Confirm the deletions made by `--remove-extras`. Without it, the command refuses and makes no changes |
+| `--yes` | remove, sync | Confirm a removal (`remove`, or `sync --remove-extras`). Without it, the command previews what would be removed, exits 2, and makes no changes |
 
 ## Output Format
 
@@ -370,7 +372,7 @@ When using `--master-id` or `--release-id`, no search is needed — the ID is us
 - Batch operations are resilient: individual item failures are collected and reported without aborting the entire batch.
 - Use `--dry-run` before any sync to preview what would change. This makes no API writes.
 - `--remove-extras` removes wantlist/collection items that are not in the input file. It refuses to run without `--yes` (or `--dry-run`), and aborts before making any change if any input record failed to resolve, so a bad match can't delete the real item.
-- `remove` commands print the release being removed before deleting it.
+- `remove` commands require `--yes`. Without it they only report the exact release (and collection instance) that would be removed; with it they print that release before deleting it.
 - Collection allows multiple instances of the same release (e.g., two copies of the same LP). By default, `collection add` skips duplicates with a message. Use `--allow-duplicate` to add another copy.
 - Cache files are stored in `~/.discogs-sync/` alongside `config.json`: `wantlist_cache.json`, `collection_cache.json`, and `marketplace_<type>_<hash>.json` (plus `…_details.json` variants). Delete any of these files to manually clear a stale cache entry.
 - `~/.discogs-sync/config.json` holds your token when you use `auth`; the tool creates it owner-only. Revoke tokens at https://www.discogs.com/settings/developers if compromised.
