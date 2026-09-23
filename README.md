@@ -94,8 +94,8 @@ discogs-sync wantlist add --master-id 3425
 discogs-sync wantlist add --release-id 7890
 
 # Remove items
-discogs-sync wantlist remove --artist "Radiohead" --album "OK Computer"
-discogs-sync wantlist remove --release-id 7890
+discogs-sync wantlist remove --artist "Radiohead" --album "OK Computer" [--yes]
+discogs-sync wantlist remove --release-id 7890 [--yes]
 
 # List current wantlist
 discogs-sync wantlist list [--search "radiohead"] [--no-cache] [--output-format json]
@@ -113,8 +113,8 @@ discogs-sync collection add --master-id 3425 [--folder-id 1]
 discogs-sync collection add --release-id 7890 [--folder-id 1]
 
 # Remove items
-discogs-sync collection remove --artist "Radiohead" --album "OK Computer"
-discogs-sync collection remove --release-id 7890
+discogs-sync collection remove --artist "Radiohead" --album "OK Computer" [--yes]
+discogs-sync collection remove --release-id 7890 [--yes]
 
 # List collection
 discogs-sync collection list [--folder-id 0] [--search "miles"] [--no-cache] [--output-format json]
@@ -154,7 +154,7 @@ discogs-sync marketplace search --artist "Radiohead" --album "OK Computer" --ver
 | Option | Description |
 |--------|-------------|
 | `--remove-extras` | Remove items not in the input file (requires `--dry-run` or `--yes`; aborts if any input record fails to resolve) |
-| `--yes` | Confirm deletions made by `--remove-extras` |
+| `--yes` | Confirm a removal (`remove` or `sync --remove-extras`); without it the command only previews the target, exits 2, and changes nothing |
 | `--folder-id` | Collection folder ID (default: 1 for adds, 0 for reads) |
 | `--allow-duplicate` | Allow adding duplicate copies to collection |
 | `--search` | Client-side filter for `list` commands (case-insensitive substring match on artist, title, year) |

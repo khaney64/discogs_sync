@@ -153,10 +153,26 @@ class TestRemoveFromCollection:
         mock_get_ids.return_value = ({456: [1001]}, {1000}, [("Miles Davis", "Kind of Blue", 456)])
         client = MagicMock()
 
-        action = remove_from_collection(client, release_id=456)
+        action = remove_from_collection(client, release_id=456, confirm=True)
 
         assert action.action == SyncActionType.REMOVE
         mock_remove.assert_called_once()
+
+    @patch("discogs_sync.sync_collection._remove_from_collection")
+    @patch("discogs_sync.sync_collection._get_collection_release_ids")
+    def test_unconfirmed_remove_previews_instance_without_removing(self, mock_get_ids, mock_remove):
+        from discogs_sync.exceptions import ConfirmationRequiredError
+
+        mock_get_ids.return_value = ({456: [1001, 1002]}, {1000}, [("Miles Davis", "Kind of Blue", 456)])
+
+        with pytest.raises(ConfirmationRequiredError) as exc:
+            remove_from_collection(MagicMock(), release_id=456)
+
+        preview = exc.value.preview
+        assert preview["instance_id"] == 1001
+        assert preview["copies_owned"] == 2
+        assert preview["artist"] == "Miles Davis"
+        mock_remove.assert_not_called()
 
     @patch("discogs_sync.sync_collection._get_collection_release_ids")
     def test_remove_nonexistent(self, mock_get_ids):
@@ -466,6 +482,21 @@ class TestCollectionCacheInvalidation:
             action=SyncActionType.REMOVE, release_id=456, artist="Miles Davis", title="Kind of Blue",
         )
         runner = CliRunner()
-        result = runner.invoke(main, ["collection", "remove", "--release-id", "456"])
+        result = runner.invoke(main, ["collection", "remove", "--release-id", "456", "--yes"])
         assert result.exit_code == 0
+        assert mock_remove.call_args.kwargs["confirm"] is True
         mock_invalidate.assert_called_once_with("collection")
+
+    @patch("discogs_sync.cache.invalidate_cache")
+    @patch("discogs_sync.sync_collection._remove_from_collection")
+    @patch("discogs_sync.sync_collection._get_collection_release_ids")
+    @patch("discogs_sync.client_factory.build_client")
+    def test_remove_without_yes_exits_2(self, _mock_client, mock_get_ids, mock_remove, mock_invalidate):
+        """collection remove without --yes refuses and changes nothing."""
+        mock_get_ids.return_value = ({456: [1001]}, {1000}, [("Miles Davis", "Kind of Blue", 456)])
+        runner = CliRunner()
+        result = runner.invoke(main, ["collection", "remove", "--release-id", "456"])
+
+        assert result.exit_code == 2
+        mock_remove.assert_not_called()
+        mock_invalidate.assert_not_called()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .exceptions import SyncError
+from .exceptions import ConfirmationRequiredError, SyncError
 from .models import (
     CollectionItem,
     InputRecord,
@@ -23,7 +23,7 @@ from .search import (
     resolve_to_release_id,
     search_release,
 )
-from .sync_wantlist import check_remove_extras_allowed
+from .sync_wantlist import check_remove_extras_allowed, describe_release
 
 if TYPE_CHECKING:
     import discogs_client
@@ -272,8 +272,13 @@ def remove_from_collection(
     format: str | None = None,
     folder_id: int = DEFAULT_READ_FOLDER,
     threshold: float = 0.7,
+    confirm: bool = False,
 ) -> SyncAction:
-    """Remove a single item from the collection."""
+    """Remove a single item (its first instance) from the collection.
+
+    Without confirm, nothing is removed: raises ConfirmationRequiredError whose
+    preview names the exact release and instance that would be removed.
+    """
     limiter = get_rate_limiter()
 
     release_id = _resolve_item(
@@ -281,7 +286,7 @@ def remove_from_collection(
         format=format, threshold=threshold,
     )
 
-    current, _, _ = _get_collection_release_ids(client, folder_id, limiter)
+    current, _, current_items = _get_collection_release_ids(client, folder_id, limiter)
     if release_id not in current:
         return SyncAction(
             action=SyncActionType.SKIP,
@@ -293,14 +298,30 @@ def remove_from_collection(
 
     # Remove first instance
     instance_id = current[release_id][0]
-    print_info(f"Removing release_id={release_id} (instance {instance_id}) from collection")
+    copies = len(current[release_id])
+    target = describe_release(release_id, current_items, artist, album)
+    description = (
+        f"{target['artist']} - {target['title']} "
+        f"(release_id={release_id}, instance {instance_id}, copies owned: {copies})"
+    )
+    if not confirm:
+        raise ConfirmationRequiredError(
+            f"Would remove one copy of {description} from collection. "
+            "Re-run with --yes to confirm. No changes were made.",
+            preview={
+                "action": "remove", "target": "collection", **target,
+                "instance_id": instance_id, "folder_id": folder_id, "copies_owned": copies,
+            },
+        )
+
+    print_info(f"Removing one copy of {description} from collection")
     _remove_from_collection(client, release_id, instance_id, folder_id, limiter)
 
     return SyncAction(
         action=SyncActionType.REMOVE,
         release_id=release_id,
-        artist=artist,
-        title=album,
+        artist=target["artist"],
+        title=target["title"],
     )
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .exceptions import NetworkError, SyncError
+from .exceptions import ConfirmationRequiredError, NetworkError, SyncError
 from .models import (
     InputRecord,
     SearchResult,
@@ -212,6 +212,16 @@ def sync_wantlist(
     return report
 
 
+def describe_release(
+    release_id: int, items: list[tuple[str, str, int]], artist: str | None, album: str | None,
+) -> dict:
+    """Return release_id/artist/title for a release, preferring the names Discogs has on file."""
+    for item_artist, item_title, item_id in items:
+        if item_id == release_id:
+            return {"release_id": release_id, "artist": item_artist, "title": item_title}
+    return {"release_id": release_id, "artist": artist, "title": album}
+
+
 def check_remove_extras_allowed(report: SyncReport, pending_removals: int, confirm_removals: bool) -> None:
     """Refuse a --remove-extras run that is unconfirmed or based on incomplete input.
 
@@ -225,9 +235,10 @@ def check_remove_extras_allowed(report: SyncReport, pending_removals: int, confi
             "No changes were made."
         )
     if pending_removals and not confirm_removals:
-        raise SyncError(
+        raise ConfirmationRequiredError(
             f"--remove-extras would delete {pending_removals} item(s). "
-            "Re-run with --dry-run to preview, then add --yes to confirm. No changes were made."
+            "Re-run with --dry-run to preview, then add --yes to confirm. No changes were made.",
+            preview={"action": "remove_extras", "pending_removals": pending_removals},
         )
 
 
@@ -285,8 +296,13 @@ def remove_from_wantlist(
     album: str | None = None,
     format: str | None = None,
     threshold: float = 0.7,
+    confirm: bool = False,
 ) -> SyncAction:
-    """Remove a single item from the wantlist."""
+    """Remove a single item from the wantlist.
+
+    Without confirm, nothing is removed: raises ConfirmationRequiredError whose
+    preview names the exact release that would be removed.
+    """
     limiter = get_rate_limiter()
 
     release_id = _resolve_item(
@@ -295,7 +311,7 @@ def remove_from_wantlist(
     )
 
     # Check if it's actually in the wantlist
-    current_ids, _, _ = _get_wantlist_release_ids(client, limiter)
+    current_ids, _, current_items = _get_wantlist_release_ids(client, limiter)
     if release_id not in current_ids:
         return SyncAction(
             action=SyncActionType.SKIP,
@@ -305,14 +321,22 @@ def remove_from_wantlist(
             reason="Not in wantlist",
         )
 
-    print_info(f"Removing release_id={release_id} from wantlist")
+    target = describe_release(release_id, current_items, artist, album)
+    if not confirm:
+        raise ConfirmationRequiredError(
+            f"Would remove {target['artist']} - {target['title']} (release_id={release_id}) from wantlist. "
+            "Re-run with --yes to confirm. No changes were made.",
+            preview={"action": "remove", "target": "wantlist", **target},
+        )
+
+    print_info(f"Removing {target['artist']} - {target['title']} (release_id={release_id}) from wantlist")
     _remove_from_wantlist(client, release_id, limiter)
 
     return SyncAction(
         action=SyncActionType.REMOVE,
         release_id=release_id,
-        artist=artist,
-        title=album,
+        artist=target["artist"],
+        title=target["title"],
     )
 
 
