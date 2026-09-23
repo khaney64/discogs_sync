@@ -112,10 +112,94 @@ class TestSyncWantlist:
         mock_get_ids.return_value = ({123, 456}, {3425, 9999}, [("Radiohead", "OK Computer", 123), ("Pink Floyd", "Animals", 456)])  # 456 is extra
 
         client = MagicMock()
-        report = sync_wantlist(client, [record], remove_extras=True)
+        report = sync_wantlist(client, [record], remove_extras=True, confirm_removals=True)
 
         assert report.removed == 1
         mock_remove.assert_called_once()
+
+
+class TestRemoveExtrasGuards:
+    @patch("discogs_sync.sync_wantlist._add_to_wantlist")
+    @patch("discogs_sync.sync_wantlist._remove_from_wantlist")
+    @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
+    @patch("discogs_sync.sync_wantlist.resolve_to_release_id")
+    @patch("discogs_sync.sync_wantlist.search_release")
+    def test_unconfirmed_remove_extras_refused_before_changes(self, mock_search, mock_resolve, mock_get_ids, mock_remove, mock_add):
+        from discogs_sync.exceptions import SyncError
+        from discogs_sync.models import SearchResult
+
+        record = InputRecord(artist="Radiohead", album="OK Computer")
+        mock_search.return_value = SearchResult(
+            input_record=record, release_id=123, matched=True, score=0.9,
+        )
+        mock_resolve.return_value = 123
+        mock_get_ids.return_value = ({456}, set(), [("Pink Floyd", "Animals", 456)])
+
+        with pytest.raises(SyncError, match="would delete 1 item"):
+            sync_wantlist(MagicMock(), [record], remove_extras=True)
+
+        mock_remove.assert_not_called()
+        mock_add.assert_not_called()
+
+    @patch("discogs_sync.sync_wantlist._remove_from_wantlist")
+    @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
+    @patch("discogs_sync.sync_wantlist.search_release")
+    def test_unresolved_record_blocks_remove_extras(self, mock_search, mock_get_ids, mock_remove):
+        from discogs_sync.exceptions import SyncError
+        from discogs_sync.models import SearchResult
+
+        record = InputRecord(artist="Pink Floyd", album="Animals (typo)")
+        mock_search.return_value = SearchResult(input_record=record, matched=False, error="No match found")
+        mock_get_ids.return_value = ({456}, set(), [("Pink Floyd", "Animals", 456)])
+
+        with pytest.raises(SyncError, match="failed to resolve"):
+            sync_wantlist(MagicMock(), [record], remove_extras=True, confirm_removals=True)
+
+        mock_remove.assert_not_called()
+
+    @patch("discogs_sync.sync_wantlist._remove_from_wantlist")
+    @patch("discogs_sync.sync_wantlist._get_wantlist_release_ids")
+    @patch("discogs_sync.sync_wantlist.resolve_to_release_id")
+    @patch("discogs_sync.sync_wantlist.search_release")
+    def test_dry_run_remove_extras_needs_no_confirmation(self, mock_search, mock_resolve, mock_get_ids, mock_remove):
+        from discogs_sync.models import SearchResult
+
+        record = InputRecord(artist="Radiohead", album="OK Computer")
+        mock_search.return_value = SearchResult(
+            input_record=record, release_id=123, matched=True, score=0.9,
+        )
+        mock_resolve.return_value = 123
+        mock_get_ids.return_value = ({123, 456}, set(), [("Radiohead", "OK Computer", 123), ("Pink Floyd", "Animals", 456)])
+
+        report = sync_wantlist(MagicMock(), [record], remove_extras=True, dry_run=True)
+
+        assert report.removed == 1
+        mock_remove.assert_not_called()
+
+    @patch("discogs_sync.sync_wantlist.sync_wantlist")
+    @patch("discogs_sync.client_factory.build_client")
+    def test_cli_yes_flag_passes_confirmation(self, _mock_client, mock_sync, tmp_csv):
+        from discogs_sync.models import SyncReport
+
+        mock_sync.return_value = SyncReport(total_input=0)
+        runner = CliRunner()
+        csv_path = tmp_csv("artist,album\nRadiohead,OK Computer\n")
+        runner.invoke(main, ["wantlist", "sync", str(csv_path), "--remove-extras", "--yes"])
+
+        assert mock_sync.call_args.kwargs["confirm_removals"] is True
+
+    @patch("discogs_sync.sync_wantlist.sync_wantlist")
+    @patch("discogs_sync.client_factory.build_client")
+    def test_cli_refusal_exits_2(self, _mock_client, mock_sync, tmp_csv):
+        from discogs_sync.exceptions import SyncError
+
+        mock_sync.side_effect = SyncError("--remove-extras would delete 3 item(s).")
+        runner = CliRunner()
+        csv_path = tmp_csv("artist,album\nRadiohead,OK Computer\n")
+        result = runner.invoke(main, ["wantlist", "sync", str(csv_path), "--remove-extras"])
+
+        assert result.exit_code == 2
+        assert mock_sync.call_args.kwargs["confirm_removals"] is False
 
 
 class TestAddToWantlist:

@@ -1,98 +1,50 @@
 """Tests for the discogs-sync.py entry-point dependency check."""
 
+import os
 import subprocess
 import sys
-import textwrap
+from pathlib import Path
 
 import pytest
 
 
+SCRIPT = Path(__file__).resolve().parent.parent / "discogs-sync.py"
+
+
+def _run_script(tmp_path, *args, python_flags=()):
+    env = {**os.environ, "HOME": str(tmp_path), "USERPROFILE": str(tmp_path)}
+    env.pop("DISCOGS_USER_TOKEN", None)
+    return subprocess.run(
+        [sys.executable, *python_flags, str(SCRIPT), *args],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
 class TestDependencyCheck:
-    """Test that the entry-point pre-flight check catches missing packages."""
+    """Test the real entry point's pre-flight dependency check."""
 
-    def test_missing_package_reports_error_and_exits_2(self, tmp_path):
-        """Simulate a missing import and verify the error message + exit code."""
-        # Create a minimal script that mimics the dependency check logic
-        # but with a fake package that definitely doesn't exist.
-        script = tmp_path / "check.py"
-        script.write_text(
-            textwrap.dedent("""\
-                import sys
-
-                _REQUIRED_PACKAGES = {
-                    "nonexistent_pkg_abc": "fake-package-abc",
-                    "nonexistent_pkg_xyz": "fake-package-xyz",
-                }
-
-                _missing = []
-                for _module, _pip_name in _REQUIRED_PACKAGES.items():
-                    try:
-                        __import__(_module)
-                    except ImportError:
-                        _missing.append(_pip_name)
-
-                if _missing:
-                    print(
-                        f"Error: missing required packages: {', '.join(_missing)}\\n"
-                        f"Install them with:  pip install {' '.join(_missing)}",
-                        file=sys.stderr,
-                    )
-                    sys.exit(2)
-            """),
-            encoding="utf-8",
-        )
-
-        result = subprocess.run(
-            [sys.executable, str(script)],
-            capture_output=True,
-            text=True,
-        )
+    def test_missing_packages_report_install_command_and_exit_2(self, tmp_path):
+        # -I -S: isolated mode without site-packages, so no dependency is importable
+        result = _run_script(tmp_path, "--help", python_flags=("-I", "-S"))
 
         assert result.returncode == 2
         assert "missing required packages" in result.stderr
-        assert "fake-package-abc" in result.stderr
-        assert "fake-package-xyz" in result.stderr
-        assert "pip install" in result.stderr
+        assert "python3-discogs-client" in result.stderr
+        assert "pip install -r" in result.stderr
 
-    def test_all_packages_present_no_error(self, tmp_path):
-        """When all packages are importable, the check passes silently."""
-        script = tmp_path / "check.py"
-        script.write_text(
-            textwrap.dedent("""\
-                import sys
-
-                _REQUIRED_PACKAGES = {
-                    "os": "os",
-                    "sys": "sys",
-                }
-
-                _missing = []
-                for _module, _pip_name in _REQUIRED_PACKAGES.items():
-                    try:
-                        __import__(_module)
-                    except ImportError:
-                        _missing.append(_pip_name)
-
-                if _missing:
-                    print(
-                        f"Error: missing required packages: {', '.join(_missing)}",
-                        file=sys.stderr,
-                    )
-                    sys.exit(2)
-
-                print("OK")
-            """),
-            encoding="utf-8",
-        )
-
-        result = subprocess.run(
-            [sys.executable, str(script)],
-            capture_output=True,
-            text=True,
-        )
+    def test_packages_present_runs_cli(self, tmp_path):
+        result = _run_script(tmp_path, "--help")
 
         assert result.returncode == 0
-        assert "OK" in result.stdout
+        assert "wantlist" in result.stdout
+
+    def test_entry_point_does_not_spawn_or_exec(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+
+        for pattern in ("subprocess", "os.exec", "os.system", "__import__"):
+            assert pattern not in source
 
 
 class TestConfigPermissions:
