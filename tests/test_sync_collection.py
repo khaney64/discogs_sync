@@ -201,7 +201,7 @@ class TestMasterIdMatching:
         )
         mock_resolve.return_value = 456
         # Collection has release_id=789 (different pressing) but same master_id=1000
-        mock_get_ids.return_value = ({789: [1001]}, {1000}, [("Miles Davis", "Kind of Blue", 789)])
+        mock_get_ids.return_value = ({789: [1001]}, {1000: {789}}, [("Miles Davis", "Kind of Blue", 789)])
 
         client = MagicMock()
         report = sync_collection(client, [record])
