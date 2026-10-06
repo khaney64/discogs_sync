@@ -104,7 +104,10 @@ class TestCandidateQueries:
             {"artist": "Kate Bush", "barcode": "A1"},
             {"barcode": "A1"},
         ]
-        assert fallback == [{"artist": "Kate Bush", "release_title": "The Dreaming", "format": "Vinyl"}]
+        assert fallback == [
+            {"artist": "Kate Bush", "release_title": "The Dreaming", "format": "Vinyl"},
+            {"q": "Kate Bush The Dreaming", "format": "Vinyl"},
+        ]
 
     def test_duplicate_filter_sets_collapse(self):
         runout_queries, fallback = _candidate_queries(["A1", "B1"], None, None)
@@ -144,15 +147,43 @@ class TestIdentifyRelease:
         assert [m.release_id for m in matches] == [2, 1]
         assert client.release.call_count == 2
 
-    def test_filters_other_artists_from_search_hits(self):
+    def test_filters_other_artists_from_unfiltered_search_hits(self):
+        # Artist-filtered search finds nothing; the bare runout search returns other artists too.
         client = _client(
-            [[_search_hit(1, "Phish - Livephish"), _search_hit(2, "Kate Bush - The Dreaming")]],
+            [[], [_search_hit(1, "Phish - Livephish"), _search_hit(2, "Kate Bush - The Dreaming")]],
             {2: _release_data(2, ["FPO4LP-A"])},
         )
 
         matches = identify_release(client, ["FP 04LP - A"], artist="Kate Bush")
 
         assert [m.release_id for m in matches] == [2]
+        assert "artist" not in client.search.call_args_list[1].kwargs
+
+    def test_trusts_discogs_artist_filter(self):
+        client = _client(
+            [[_search_hit(1, "Beat (2), The - Special Beat Service")]],
+            {1: _release_data(1, ["SP-070032-A-RCA-2"], artist="The Beat")},
+        )
+
+        matches = identify_release(client, ["SP-070032-A-RCA-2"], artist="The Beat")
+
+        assert [m.release_id for m in matches] == [1]
+
+    def test_freetext_fallback_finds_artist_name_variation(self):
+        # Runout transcribed without the leading zero and the artist credited under a
+        # variation: every runout search and the artist-field fallback come back empty.
+        client = _client(
+            [[], [], [], [], [_search_hit(1, "The English Beat* - Special Beat Service")]],
+            {1: _release_data(1, ["SP-070032-A-RCA-2 I A 1 F"], artist="The English Beat")},
+        )
+
+        matches = identify_release(client, ["SP-70032-A RCA-2"], artist="The English Beat", album="Special Beat Service")
+
+        assert [m.release_id for m in matches] == [1]
+        assert matches[0].score == 1.0
+        assert client.search.call_args_list[4].kwargs == {
+            "type": "release", "q": "The English Beat Special Beat Service", "format": "Vinyl",
+        }
 
     def test_pools_narrow_and_broad_runout_searches(self):
         # Narrow search finds only a near-miss; the crossed-out pressing turns up in a broader one.

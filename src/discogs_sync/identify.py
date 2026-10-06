@@ -95,8 +95,10 @@ def _search_ids(client, queries: list[dict], artist: str | None, limiter, verbos
             page = _api_call_with_retry(lambda: results.page(1), limiter)
         except Exception:
             continue
+        # Queries with an artist field were already filtered by Discogs.
+        filter_artist = artist and "artist" not in query
         for item in page:
-            if artist and _similarity(artist, _get_artist_name(item)) < ARTIST_FILTER_THRESHOLD:
+            if filter_artist and _similarity(artist, _get_artist_name(item)) < ARTIST_FILTER_THRESHOLD:
                 continue
             if item.id not in ids:
                 ids.append(item.id)
@@ -114,8 +116,14 @@ def _candidate_queries(runouts: list[str], artist: str | None, album: str | None
             if query not in runout_queries:
                 runout_queries.append(query)
 
-    # Runout not indexed or misread: score every vinyl release of the album instead.
-    fallback_queries = [{"artist": artist, "release_title": album, "format": "Vinyl"}] if artist and album else []
+    # Runout not indexed or transcribed differently (e.g. SP-70032 vs SP-070032): score
+    # the album's vinyl releases instead. The artist field only matches an artist's main
+    # name, so a free-text query is added to catch name variations ("The English Beat"
+    # is credited under "The Beat (2)").
+    fallback_queries = [
+        {"artist": artist, "release_title": album, "format": "Vinyl"},
+        {"q": f"{artist} {album}", "format": "Vinyl"},
+    ] if artist and album else []
     return runout_queries, fallback_queries
 
 
