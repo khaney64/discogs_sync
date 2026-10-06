@@ -225,7 +225,7 @@ Results below the threshold (default 0.7) are rejected.
 
 ### Identifying a Pressing by Runout
 
-`release identify` finds the exact pressing from the matrix/runout etchings in the dead wax. The Discogs database search's `barcode` parameter also indexes "Matrix / Runout" identifiers, so candidates are found by searching each runout (narrowed by `--artist`/`--album`, broadening if nothing is found, and finally falling back to every vinyl release of the album). Each candidate's full release is fetched and its runouts compared locally:
+`release identify` finds the exact pressing from the matrix/runout etchings in the dead wax. The Discogs database search's `barcode` parameter also indexes "Matrix / Runout" identifiers, so candidates are found by searching each runout with artist + album, artist only, and no filters, pooling all hits (a narrow search can return only near-misses, such as club editions where the runout is the active matrix rather than crossed out). Only if no runout search hits does it fall back to every vinyl release of the album. Each candidate's full release is fetched and its runouts compared locally:
 
 - Runouts are normalized before comparison: case, spacing, and punctuation are ignored, and lookalike characters are folded (`O`→`0`, `I`/`L`→`1`), so `FP 04LP - A` matches `FPO4LP-A 401241 1A BG`.
 - Each given runout scores the fraction of its characters found in order within the release's best-matching runout (1.0 when fully contained); the release score is the average across the runouts given.

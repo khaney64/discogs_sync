@@ -70,42 +70,53 @@ def identify_release(
 
 
 def _find_candidates(client, runouts, artist, album, max_candidates, limiter, verbose) -> list[int]:
-    """Run progressively broader searches, stopping at the first tier that finds anything."""
-    for tier in _candidate_query_tiers(runouts, artist, album):
-        ids: list[int] = []
-        for query in tier:
-            if verbose:
-                print_verbose(f"Searching releases: {query}")
-            results = _api_call_with_retry(lambda q=query: client.search(type="release", **q), limiter)
-            try:
-                page = _api_call_with_retry(lambda: results.page(1), limiter)
-            except Exception:
+    """Pool every runout search, narrowest first; fall back to the album's vinyl releases if none hit.
+
+    Runout searches are pooled rather than stopping at the first hit, because a
+    narrow search can return only near-misses (e.g. club editions whose active
+    matrix is the runout given) and hide the pressings where it is crossed out.
+    """
+    runout_queries, fallback_queries = _candidate_queries(runouts, artist, album)
+    ids = _search_ids(client, runout_queries, artist, limiter, verbose)
+    if not ids:
+        ids = _search_ids(client, fallback_queries, artist, limiter, verbose)
+    if verbose:
+        print_verbose(f"Found {len(ids)} candidate release(s); checking up to {max_candidates}")
+    return ids[:max_candidates]
+
+
+def _search_ids(client, queries: list[dict], artist: str | None, limiter, verbose) -> list[int]:
+    ids: list[int] = []
+    for query in queries:
+        if verbose:
+            print_verbose(f"Searching releases: {query}")
+        results = _api_call_with_retry(lambda q=query: client.search(type="release", **q), limiter)
+        try:
+            page = _api_call_with_retry(lambda: results.page(1), limiter)
+        except Exception:
+            continue
+        for item in page:
+            if artist and _similarity(artist, _get_artist_name(item)) < ARTIST_FILTER_THRESHOLD:
                 continue
-            for item in page:
-                if artist and _similarity(artist, _get_artist_name(item)) < ARTIST_FILTER_THRESHOLD:
-                    continue
-                if item.id not in ids:
-                    ids.append(item.id)
-        if ids:
-            if verbose:
-                print_verbose(f"Found {len(ids)} candidate release(s); checking up to {max_candidates}")
-            return ids[:max_candidates]
-    return []
+            if item.id not in ids:
+                ids.append(item.id)
+    return ids
 
 
-def _candidate_query_tiers(runouts: list[str], artist: str | None, album: str | None) -> list[list[dict]]:
-    names: dict = {}
-    if artist:
-        names["artist"] = artist
-    if album:
-        names["release_title"] = album
+def _candidate_queries(runouts: list[str], artist: str | None, album: str | None) -> tuple[list[dict], list[dict]]:
+    """Return (runout queries, narrowest first; fallback queries used only when those find nothing)."""
+    filter_sets = [{"artist": artist, "release_title": album}, {"artist": artist}, {}]
+    runout_queries: list[dict] = []
+    for filters in filter_sets:
+        filters = {k: v for k, v in filters.items() if v}
+        for r in runouts:
+            query = {**filters, "barcode": r}
+            if query not in runout_queries:
+                runout_queries.append(query)
 
-    tiers = [[{**names, "barcode": r} for r in runouts]]
-    if artist and album:
-        tiers.append([{"artist": artist, "barcode": r} for r in runouts])
-        # Runout not indexed or misread: score every vinyl release of the album instead.
-        tiers.append([{"artist": artist, "release_title": album, "format": "Vinyl"}])
-    return tiers
+    # Runout not indexed or misread: score every vinyl release of the album instead.
+    fallback_queries = [{"artist": artist, "release_title": album, "format": "Vinyl"}] if artist and album else []
+    return runout_queries, fallback_queries
 
 
 def _score_release(release_id: int, data: dict, runouts: list[str]) -> RunoutMatch:

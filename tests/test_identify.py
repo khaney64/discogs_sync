@@ -8,7 +8,7 @@ from click.testing import CliRunner
 
 from discogs_sync.cli import main
 from discogs_sync.identify import (
-    _candidate_query_tiers,
+    _candidate_queries,
     _describe_formats,
     identify_release,
     normalize_runout,
@@ -43,12 +43,14 @@ def _release_data(release_id, runouts, have=0, title="The Dreaming", artist="Kat
 def _client(search_pages, releases):
     """search_pages: list of hit lists returned by successive client.search() calls."""
     client = MagicMock()
-    results = []
-    for hits in search_pages:
+    pages = iter(search_pages)
+
+    def search(**_kwargs):
         r = MagicMock()
-        r.page.return_value = hits
-        results.append(r)
-    client.search.side_effect = results
+        r.page.return_value = next(pages, [])
+        return r
+
+    client.search.side_effect = search
 
     def make_release(release_id):
         release = MagicMock()
@@ -94,15 +96,20 @@ class TestRunoutScore:
         assert runout_score("FPO4LP-A", "—◁") == 0.0
 
 
-class TestCandidateQueryTiers:
-    def test_artist_and_album_tiers_broaden(self):
-        tiers = _candidate_query_tiers(["A1"], "Kate Bush", "The Dreaming")
-        assert tiers[0] == [{"artist": "Kate Bush", "release_title": "The Dreaming", "barcode": "A1"}]
-        assert tiers[1] == [{"artist": "Kate Bush", "barcode": "A1"}]
-        assert tiers[2] == [{"artist": "Kate Bush", "release_title": "The Dreaming", "format": "Vinyl"}]
+class TestCandidateQueries:
+    def test_runout_queries_broaden_and_fallback_is_separate(self):
+        runout_queries, fallback = _candidate_queries(["A1"], "Kate Bush", "The Dreaming")
+        assert runout_queries == [
+            {"artist": "Kate Bush", "release_title": "The Dreaming", "barcode": "A1"},
+            {"artist": "Kate Bush", "barcode": "A1"},
+            {"barcode": "A1"},
+        ]
+        assert fallback == [{"artist": "Kate Bush", "release_title": "The Dreaming", "format": "Vinyl"}]
 
-    def test_runout_only_is_single_tier(self):
-        assert _candidate_query_tiers(["A1", "B1"], None, None) == [[{"barcode": "A1"}, {"barcode": "B1"}]]
+    def test_duplicate_filter_sets_collapse(self):
+        runout_queries, fallback = _candidate_queries(["A1", "B1"], None, None)
+        assert runout_queries == [{"barcode": "A1"}, {"barcode": "B1"}]
+        assert fallback == []
 
 
 class TestIdentifyRelease:
@@ -147,16 +154,44 @@ class TestIdentifyRelease:
 
         assert [m.release_id for m in matches] == [2]
 
-    def test_falls_back_to_broader_tier_when_first_is_empty(self):
+    def test_pools_narrow_and_broad_runout_searches(self):
+        # Narrow search finds only a near-miss; the crossed-out pressing turns up in a broader one.
         client = _client(
-            [[], [_search_hit(2, "Kate Bush - The Dreaming")]],
+            [[_search_hit(1, "The Cars - The Cars")], [_search_hit(2, "The Cars - The Cars")]],
+            {
+                1: _release_data(1, ["R-144033-1 6E-135-A-9-SP"], artist="The Cars"),
+                2: _release_data(2, ["6E-135-A6 R-144033-A RTB STERLING"], artist="The Cars"),
+            },
+        )
+
+        matches = identify_release(client, ["R-144033-A"], artist="The Cars", album="The Cars")
+
+        assert {m.release_id for m in matches} == {1, 2}
+        assert matches[0].release_id == 2
+        assert client.search.call_count == 3
+
+    def test_fallback_only_when_runout_searches_find_nothing(self):
+        client = _client(
+            [[], [], [], [_search_hit(2, "Kate Bush - The Dreaming")]],
             {2: _release_data(2, ["FPO4LP-A"])},
         )
 
         matches = identify_release(client, ["FP 04LP - A"], artist="Kate Bush", album="The Dreaming")
 
         assert [m.release_id for m in matches] == [2]
-        assert "release_title" not in client.search.call_args_list[1].kwargs
+        assert client.search.call_args_list[3].kwargs == {
+            "type": "release", "artist": "Kate Bush", "release_title": "The Dreaming", "format": "Vinyl",
+        }
+
+    def test_fallback_skipped_when_runout_search_hits(self):
+        client = _client(
+            [[_search_hit(2, "Kate Bush - The Dreaming")]],
+            {2: _release_data(2, ["FPO4LP-A"])},
+        )
+
+        identify_release(client, ["FP 04LP - A"], artist="Kate Bush", album="The Dreaming")
+
+        assert all("barcode" in c.kwargs for c in client.search.call_args_list)
 
     def test_respects_max_candidates(self):
         hits = [_search_hit(i, "Kate Bush - The Dreaming") for i in range(1, 6)]
