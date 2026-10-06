@@ -3,9 +3,11 @@ name: discogs-sync
 description: >
   Add and remove albums from a Discogs wantlist or collection by artist and album name,
   master ID, or release ID. Search marketplace pricing for vinyl, CD, and other formats.
-  List wantlist and collection contents. Use when the user asks to add or remove a record
-  from their Discogs wantlist or collection, check what's on their wantlist, look up
-  marketplace prices, or find what a record is selling for. Also supports bulk operations
+  List wantlist and collection contents. Identify the exact pressing of a record from the
+  matrix/runout etchings in its dead wax, and swap a collection entry to the correct pressing.
+  Use when the user asks to add or remove a record from their Discogs wantlist or collection,
+  check what's on their wantlist, look up marketplace prices, find what a record is selling
+  for, or figure out which pressing they own from its runout. Also supports bulk operations
   via CSV/JSON file input. Requires a Discogs personal access token, supplied via the
   DISCOGS_USER_TOKEN environment variable or a one-time `auth` command. Only contacts
   api.discogs.com.
@@ -41,7 +43,7 @@ python3 -m venv ~/.discogs-sync/venv
 - **Processes:** none. No subprocess, shell, `exec`, or `eval`; no packages are installed at runtime.
 - **Credentials:** one Discogs personal access token, read from `DISCOGS_USER_TOKEN` or from `~/.discogs-sync/config.json` (created owner-only). The token is never printed or logged. Revoke it at https://www.discogs.com/settings/developers if compromised.
 
-**Agent rules for destructive operations:** every removal (`wantlist remove`, `collection remove`, `sync --remove-extras`) is refused unless `--yes` is passed, and the refusal makes no changes.
+**Agent rules for destructive operations:** every removal (`wantlist remove`, `collection remove`, `collection replace`, `sync --remove-extras`) is refused unless `--yes` is passed, and the refusal makes no changes.
 1. Run the command **without** `--yes` first (for sync, add `--dry-run`). It resolves the target and exits with code 2, reporting exactly what would be removed: artist, title, release ID, and for collections the instance ID and number of copies owned. With `--output-format json` this preview is printed as `{"confirmation_required": true, ...}`.
 2. Show that preview to the user and get explicit approval.
 3. Only then re-run the same command with `--yes`.
@@ -138,6 +140,28 @@ python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py colle
 
 Duplicate check: by default, `add` skips if the release is already in the collection (by release_id, master_id, or fuzzy artist+title match). Use `--allow-duplicate` to add another copy.
 
+### Collection — Replace with the Correct Pressing
+
+```bash
+# Preview (no change, exit 2), then confirm after user approval
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection replace --release-id 29576638 --old-release-id 9697557
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection replace --release-id 29576638 --old-release-id 9697557 --yes
+
+# When several copies of the old release are owned, pick one by instance
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection replace --release-id 29576638 --instance-id 2124303711 [--yes]
+```
+
+Discogs can't change which release a collection entry points to, so `replace` adds the new release to the old entry's folder, copies its rating and custom fields (Media Condition, Sleeve Condition, Notes), then removes the old entry. If copying fails, the old entry is kept and the error says so. Always use `replace` rather than `add` + `remove` when correcting a pressing — a plain `remove` discards the condition grades.
+
+### Release — Identify a Pressing by Runout
+
+```bash
+# Repeat --runout once per side; --artist/--album narrow the search
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py release identify --runout "FP 04LP - A" --runout "FP 04LP - B" --artist "Kate Bush" --album "The Dreaming" [--limit 5] [--max-candidates 25] [--verbose] [--output-format json]
+```
+
+Returns candidate releases ranked by how well their Matrix / Runout identifiers match (score 0.0–1.0), with label, catalog number, `format_details` (color, weight, obi, etc.), and which listed runout matched each input. Matching ignores case, spacing, and punctuation, and treats `O`/`0` and `I`/`L`/`1` as the same, since etchings are often misread. Several releases can score 1.0 when they were cut from the same lacquers — show the user the `format_details` and ask which fits their copy rather than picking one.
+
 ### Marketplace — Search Pricing
 
 ```bash
@@ -221,7 +245,12 @@ Format synonyms are normalized automatically: `LP`/`record`/`12"` → Vinyl, `co
 | `--search` | list | Filter results by artist or title (case-insensitive substring match) |
 | `--dry-run` | sync | Preview changes without modifying Discogs |
 | `--remove-extras` | sync | Remove wantlist/collection items not in the input file (requires `--dry-run` or `--yes`) |
-| `--yes` | remove, sync | Confirm a removal (`remove`, or `sync --remove-extras`). Without it, the command previews what would be removed, exits 2, and makes no changes |
+| `--yes` | remove, replace, sync | Confirm a removal (`remove`, `replace`, or `sync --remove-extras`). Without it, the command previews what would be removed, exits 2, and makes no changes |
+| `--runout` | release identify | Matrix/runout etching; repeat once per side |
+| `--instance-id` | collection replace | Collection entry to replace |
+| `--old-release-id` | collection replace | Release currently in the collection (when only one copy is owned) |
+| `--limit` | release identify | Max matches to show (default: 5) |
+| `--max-candidates` | release identify | Max candidate releases to fetch and score (default: 25) |
 
 ## Output Format
 

@@ -347,6 +347,44 @@ def collection_remove(artist, album, release_id, threshold, confirm, output_form
         sys.exit(2)
 
 
+@collection.command("replace")
+@click.option("--release-id", "new_release_id", type=int, required=True, help="Release the entry should become")
+@click.option("--instance-id", type=int, help="Collection instance to replace")
+@click.option("--old-release-id", type=int, help="Release currently in the collection (when only one copy is owned)")
+@click.option("--yes", "confirm", is_flag=True, help="Confirm the replacement (without it, only previews)")
+@click.option("--output-format", type=click.Choice(["table", "json"]), default="table")
+def collection_replace(new_release_id, instance_id, old_release_id, confirm, output_format):
+    """Swap a collection entry to a different release, keeping folder, rating, and notes."""
+    from .client_factory import build_client
+    from .output import output_sync_report, print_error
+    from .models import SyncReport
+    from .sync_collection import replace_in_collection
+
+    if not instance_id and not old_release_id:
+        print_error("Provide --instance-id or --old-release-id")
+        sys.exit(2)
+
+    try:
+        client = build_client()
+        actions = replace_in_collection(
+            client, new_release_id, instance_id=instance_id, old_release_id=old_release_id, confirm=confirm,
+        )
+        report = SyncReport(total_input=1)
+        for action in actions:
+            report.add_action(action)
+        output_sync_report(report, output_format)
+        from .cache import invalidate_cache
+        invalidate_cache("collection")
+        sys.exit(report.exit_code)
+    except ConfirmationRequiredError as e:
+        _exit_confirmation_required(e, output_format)
+    except DiscogsSyncError as e:
+        from .cache import invalidate_cache
+        invalidate_cache("collection")
+        print_error(str(e))
+        sys.exit(2)
+
+
 @collection.command("list")
 @click.option("--search", default=None, help="Filter by artist or title (case-insensitive)")
 @click.option("--format", "fmt", default=None, help="Filter by format (e.g., Vinyl, CD, Cassette)")
@@ -384,6 +422,41 @@ def collection_list(search, fmt, year, folder_id, no_cache, output_format):
             items = [i for i in items if i.year == year]
         items.sort(key=lambda i: ((i.artist or "").lower(), (i.title or "").lower()))
         output_collection(items, output_format)
+    except DiscogsSyncError as e:
+        print_error(str(e))
+        sys.exit(2)
+
+
+# ── Release commands ───────────────────────────────────────────────────────
+
+
+@main.group()
+def release():
+    """Look up specific Discogs releases."""
+
+
+@release.command("identify")
+@click.option("--runout", "runouts", multiple=True, required=True,
+              help="Matrix/runout etching from the dead wax; repeat once per side")
+@click.option("--artist", help="Artist name (narrows the search)")
+@click.option("--album", help="Album title (narrows the search)")
+@click.option("--max-candidates", type=int, default=25, help="Max candidate releases to fetch and score")
+@click.option("--limit", type=int, default=5, help="Max matches to show")
+@click.option("--verbose", is_flag=True, help="Show search queries and API calls")
+@click.option("--output-format", type=click.Choice(["table", "json"]), default="table")
+def release_identify(runouts, artist, album, max_candidates, limit, verbose, output_format):
+    """Identify a pressing from its matrix/runout etchings."""
+    from .client_factory import build_client
+    from .identify import identify_release
+    from .output import output_runout_matches, print_error
+
+    try:
+        client = build_client()
+        matches = identify_release(
+            client, list(runouts), artist=artist, album=album,
+            max_candidates=max_candidates, verbose=verbose,
+        )
+        output_runout_matches(matches[:limit], output_format)
     except DiscogsSyncError as e:
         print_error(str(e))
         sys.exit(2)

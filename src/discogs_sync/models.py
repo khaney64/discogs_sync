@@ -261,3 +261,39 @@ class CollectionItem:
             "format": self.format,
             "year": self.year,
         }
+
+
+@dataclass
+class RunoutMatch:
+    """A candidate release scored against runout etchings the user read off the vinyl."""
+
+    release_id: int
+    score: float
+    master_id: int | None = None
+    title: str | None = None
+    artist: str | None = None
+    year: int | None = None
+    country: str | None = None
+    label: str | None = None
+    catno: str | None = None
+    format_details: str | None = None
+    community_have: int | None = None
+    matched_runouts: list[dict] = field(default_factory=list)
+    runouts: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "release_id": self.release_id,
+            "score": round(self.score, 3),
+            "master_id": self.master_id,
+            "title": self.title,
+            "artist": self.artist,
+            "year": self.year,
+            "country": self.country,
+            "label": self.label,
+            "catno": self.catno,
+            "format_details": self.format_details,
+            "community_have": self.community_have,
+            "matched_runouts": self.matched_runouts,
+            "runouts": self.runouts,
+        }

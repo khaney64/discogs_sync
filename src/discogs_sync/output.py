@@ -200,6 +200,39 @@ def output_marketplace(results: list, output_format: str = "table", details: boo
     console.print(f"\nTotal: {len(results)}")
 
 
+def output_runout_matches(matches: list, output_format: str = "table") -> None:
+    """Output release candidates ranked by runout match."""
+    if output_format == "json":
+        output_json({"matches": [m.to_dict() for m in matches], "total": len(matches)})
+        return
+
+    table = Table(title="Runout Matches")
+    table.add_column("Score", justify="right")
+    table.add_column("Release ID")
+    table.add_column("Artist")
+    table.add_column("Title")
+    table.add_column("Country")
+    table.add_column("Year")
+    table.add_column("Label / Cat #")
+    table.add_column("Format")
+    table.add_column("Matched Runouts")
+    for m in matches:
+        matched = "\n".join(f"{r['input']} → {r['runout'] or '-'}" for r in m.matched_runouts)
+        table.add_row(
+            f"{m.score:.2f}",
+            str(m.release_id),
+            m.artist or "",
+            m.title or "",
+            m.country or "",
+            str(m.year or ""),
+            " ".join(filter(None, [m.label, m.catno])),
+            m.format_details or "",
+            matched,
+        )
+    console.print(table)
+    console.print(f"\nTotal: {len(matches)}")
+
+
 def output_user_info(username: str, output_format: str = "table") -> None:
     """Output authenticated user info."""
     if output_format == "json":

@@ -116,8 +116,19 @@ discogs-sync collection add --release-id 7890 [--folder-id 1]
 discogs-sync collection remove --artist "Radiohead" --album "OK Computer" [--yes]
 discogs-sync collection remove --release-id 7890 [--yes]
 
+# Swap an entry to the correct pressing, keeping its folder, rating, and condition/notes fields
+discogs-sync collection replace --release-id 29576638 --old-release-id 9697557 [--yes]
+discogs-sync collection replace --release-id 29576638 --instance-id 2124303711 [--yes]
+
 # List collection
 discogs-sync collection list [--folder-id 0] [--search "miles"] [--no-cache] [--output-format json]
+```
+
+### Release
+
+```bash
+# Identify a pressing from its matrix/runout etchings (repeat --runout once per side)
+discogs-sync release identify --runout "FP 04LP - A" --runout "FP 04LP - B" [--artist "Kate Bush"] [--album "The Dreaming"] [--limit 5] [--max-candidates 25] [--output-format json]
 ```
 
 ### Marketplace
@@ -154,7 +165,7 @@ discogs-sync marketplace search --artist "Radiohead" --album "OK Computer" --ver
 | Option | Description |
 |--------|-------------|
 | `--remove-extras` | Remove items not in the input file (requires `--dry-run` or `--yes`; aborts if any input record fails to resolve) |
-| `--yes` | Confirm a removal (`remove` or `sync --remove-extras`); without it the command only previews the target, exits 2, and changes nothing |
+| `--yes` | Confirm a removal (`remove`, `replace`, or `sync --remove-extras`); without it the command only previews the target, exits 2, and changes nothing |
 | `--folder-id` | Collection folder ID (default: 1 for adds, 0 for reads) |
 | `--allow-duplicate` | Allow adding duplicate copies to collection |
 | `--search` | Client-side filter for `list` commands (case-insensitive substring match on artist, title, year) |
@@ -211,6 +222,14 @@ Each result is scored (0.0-1.0) based on:
 - 10% format match
 
 Results below the threshold (default 0.7) are rejected.
+
+### Identifying a Pressing by Runout
+
+`release identify` finds the exact pressing from the matrix/runout etchings in the dead wax. The Discogs database search's `barcode` parameter also indexes "Matrix / Runout" identifiers, so candidates are found by searching each runout (narrowed by `--artist`/`--album`, broadening if nothing is found, and finally falling back to every vinyl release of the album). Each candidate's full release is fetched and its runouts compared locally:
+
+- Runouts are normalized before comparison: case, spacing, and punctuation are ignored, and lookalike characters are folded (`O`→`0`, `I`/`L`→`1`), so `FP 04LP - A` matches `FPO4LP-A 401241 1A BG`.
+- Each given runout scores the fraction of its characters found in order within the release's best-matching runout (1.0 when fully contained); the release score is the average across the runouts given.
+- Ties (e.g. a reissue and a special edition cut from the same lacquers) are ordered by how many users own each; `format_details` (color, weight, obi) usually tells them apart.
 
 ## Exit Codes
 

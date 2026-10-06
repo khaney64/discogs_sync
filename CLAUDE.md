@@ -40,6 +40,7 @@ CLI (cli.py) → Click command groups
   ├── auth.py / config.py / client_factory.py  → personal token (DISCOGS_USER_TOKEN env, else config.json)
   ├── sync_wantlist.py / sync_collection.py    → add/remove/list/sync
   ├── marketplace.py                           → pricing via master versions
+  ├── identify.py                              → pressing identification from runout etchings
   ├── search.py                                → multi-pass release matching
   ├── parsers.py                               → CSV/JSON input parsing
   ├── rate_limiter.py                          → proactive throttling
@@ -93,6 +94,19 @@ Removal confirmation: every destructive entry point requires explicit confirmati
 - CLI `--yes` maps to these flags. `_exit_confirmation_required()` in `cli.py` prints the refusal, emits the preview as JSON with `--output-format json`, and exits 2.
 
 Collection differs from wantlist: uses folder_id (default 1 for adds, 0 for reads), removing requires instance_id, and `--allow-duplicate` bypasses the duplicate check.
+
+### Collection Replace
+
+`replace_in_collection()` swaps an instance to a different release (Discogs has no endpoint to change an instance's release). `_find_instance()` locates the old instance in folder 0 by `instance_id`, or by release_id when exactly one copy is owned, capturing its real `folder_id`, `rating`, and non-empty `notes` (custom fields: Media Condition, Sleeve Condition, Notes). Unconfirmed, it raises `ConfirmationRequiredError` with an old/new preview. Confirmed, it runs add → copy → remove:
+- `_add_instance()` posts via `client._post` directly because `CollectionFolder.add_release()` discards the response's `instance_id`. Not retried, to avoid duplicate adds.
+- `_copy_instance_metadata()` posts the rating to the instance URL and each field to `.../instances/{id}/fields/{field_id}?value=...` (the API takes the value as a query param).
+- If copying fails, raises `SyncError` and the old instance is **not** removed.
+
+Folder URLs are built from `client._base_url` + username rather than `me.collection_folders[folder_id]`, which indexes by list position, not folder id.
+
+### Runout Identification
+
+`identify_release()` in `identify.py` finds candidates with `client.search(type="release", barcode=<runout>)` — the `barcode` parameter also indexes "Matrix / Runout" identifiers. Query tiers broaden until one returns hits: barcode + artist + album → barcode + artist → artist + album + format=Vinyl (no runout). Hits whose artist similarity is < 0.6 are dropped. Each candidate's full release is fetched (`release.refresh()`; `client.release()` is lazy and lacks `identifiers` until then) and scored by `runout_score()`: both strings go through `normalize_runout()` (uppercase alphanumerics, `O→0`, `I/L→1`), full containment scores 1.0, otherwise the fraction of the input covered by matching blocks of ≥ 2 chars. The release score averages the best per-input score; ties sort by `community.have`.
 
 ### Output Modes
 

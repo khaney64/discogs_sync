@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from urllib.parse import urlencode
 
 from discogs_client.models import CollectionItemInstance
 
@@ -338,6 +339,65 @@ def remove_from_collection(
     )
 
 
+def replace_in_collection(
+    client: discogs_client.Client,
+    new_release_id: int,
+    instance_id: int | None = None,
+    old_release_id: int | None = None,
+    confirm: bool = False,
+) -> list[SyncAction]:
+    """Point a collection entry at a different release, keeping its folder, rating, and notes.
+
+    Discogs can't change an instance's release, so this adds new_release_id to the
+    old instance's folder, copies rating and custom fields (e.g. media/sleeve
+    condition) onto it, then removes the old instance. The old instance is only
+    removed once the copy has succeeded.
+
+    Without confirm, nothing changes: raises ConfirmationRequiredError whose
+    preview names the old instance, the new release, and what will be carried over.
+    """
+    limiter = get_rate_limiter()
+
+    old = _find_instance(client, limiter, instance_id=instance_id, release_id=old_release_id)
+    if old["release_id"] == new_release_id:
+        raise SyncError(f"Instance {old['instance_id']} is already release {new_release_id}. No changes were made.")
+
+    new = _describe_remote_release(client, new_release_id, limiter)
+    description = (
+        f"{old['artist']} - {old['title']} (release_id={old['release_id']}, instance {old['instance_id']}) "
+        f"with {new['artist']} - {new['title']} (release_id={new_release_id})"
+    )
+    if not confirm:
+        raise ConfirmationRequiredError(
+            f"Would replace {description}, keeping folder {old['folder_id']}, rating, and "
+            f"{len(old['notes'])} note field(s). Re-run with --yes to confirm. No changes were made.",
+            preview={
+                "action": "replace", "target": "collection",
+                "old": {k: old[k] for k in ("release_id", "instance_id", "artist", "title")},
+                "new": new,
+                "folder_id": old["folder_id"], "rating": old["rating"], "notes": old["notes"],
+            },
+        )
+
+    print_info(f"Replacing {description}")
+    new_instance_id = _add_instance(client, new_release_id, old["folder_id"], limiter)
+    try:
+        _copy_instance_metadata(client, old["folder_id"], new_release_id, new_instance_id, old["rating"], old["notes"], limiter)
+    except Exception as e:
+        raise SyncError(
+            f"Added release {new_release_id} as instance {new_instance_id}, but copying rating/notes failed: {e}. "
+            f"The old instance {old['instance_id']} was NOT removed."
+        ) from e
+    _remove_from_collection(client, old["release_id"], old["instance_id"], DEFAULT_READ_FOLDER, limiter)
+
+    return [
+        SyncAction(action=SyncActionType.ADD, release_id=new_release_id, artist=new["artist"], title=new["title"],
+                   reason=f"Replaces instance {old['instance_id']} (new instance {new_instance_id})"),
+        SyncAction(action=SyncActionType.REMOVE, release_id=old["release_id"], artist=old["artist"], title=old["title"],
+                   reason=f"Replaced by release {new_release_id}"),
+    ]
+
+
 def list_collection(
     client: discogs_client.Client,
     folder_id: int = DEFAULT_READ_FOLDER,
@@ -502,6 +562,83 @@ def _add_to_collection(client, release_id: int, folder_id: int, limiter) -> None
         lambda: me.collection_folders[folder_id].add_release(release_id),
         limiter,
     )
+
+
+def _find_instance(client, limiter, instance_id: int | None = None, release_id: int | None = None) -> dict:
+    """Locate one collection instance by instance_id, or by release_id when only one copy is owned."""
+    if not instance_id and not release_id:
+        raise SyncError("Must provide --instance-id or --old-release-id")
+
+    me = _api_call_with_retry(lambda: client.identity(), limiter)
+    folder = _api_call_with_retry(lambda: me.collection_folders[DEFAULT_READ_FOLDER], limiter)
+    releases = _api_call_with_retry(lambda: folder.releases, limiter)
+
+    found = []
+    page_num = 1
+    while True:
+        try:
+            page = _api_call_with_retry(lambda p=page_num: releases.page(p), limiter)
+        except Exception:
+            break
+        if not page:
+            break
+        for item in page:
+            data = item.data if isinstance(getattr(item, "data", None), dict) else {}
+            if instance_id and data.get("instance_id") != instance_id:
+                continue
+            if release_id and data.get("id") != release_id:
+                continue
+            info = data.get("basic_information", {})
+            found.append({
+                "release_id": data.get("id"),
+                "instance_id": data.get("instance_id"),
+                "folder_id": data.get("folder_id", DEFAULT_ADD_FOLDER),
+                "rating": data.get("rating") or 0,
+                "notes": [n for n in data.get("notes") or [] if n.get("value")],
+                "artist": extract_artist_from_data(info),
+                "title": info.get("title", ""),
+            })
+        page_num += 1
+
+    if not found:
+        target = f"instance {instance_id}" if instance_id else f"release {release_id}"
+        raise SyncError(f"{target} is not in the collection. No changes were made.")
+    if len(found) > 1:
+        ids = ", ".join(str(f["instance_id"]) for f in found)
+        raise SyncError(f"Release {release_id} has {len(found)} copies (instances {ids}); pass --instance-id to pick one.")
+    return found[0]
+
+
+def _describe_remote_release(client, release_id: int, limiter) -> dict:
+    release = _api_call_with_retry(lambda: client.release(release_id), limiter)
+    _api_call_with_retry(lambda: release.refresh(), limiter)
+    data = release.data
+    return {"release_id": release_id, "artist": extract_artist_from_data(data), "title": data.get("title", "")}
+
+
+def _folder_url(client, folder_id: int, limiter) -> str:
+    me = _api_call_with_retry(lambda: client.identity(), limiter)
+    return f"{client._base_url}/users/{me.username}/collection/folders/{folder_id}"
+
+
+def _add_instance(client, release_id: int, folder_id: int, limiter) -> int:
+    """Add a release to a folder and return the new instance_id.
+
+    discogs_client's add_release() discards the response, so post directly.
+    """
+    url = f"{_folder_url(client, folder_id, limiter)}/releases/{release_id}"
+    response = _api_call_with_retry(lambda: client._post(url, None), limiter, retries=1)
+    return response["instance_id"]
+
+
+def _copy_instance_metadata(client, folder_id: int, release_id: int, instance_id: int, rating: int, notes: list[dict], limiter) -> None:
+    """Set rating and custom field values (media/sleeve condition, notes) on an instance."""
+    instance_url = f"{_folder_url(client, folder_id, limiter)}/releases/{release_id}/instances/{instance_id}"
+    if rating:
+        _api_call_with_retry(lambda: client._post(instance_url, {"rating": rating}), limiter)
+    for note in notes:
+        url = f"{instance_url}/fields/{note['field_id']}?{urlencode({'value': note['value']})}"
+        _api_call_with_retry(lambda u=url: client._post(u, None), limiter)
 
 
 def _remove_from_collection(client, release_id: int, instance_id: int, folder_id: int, limiter) -> None:

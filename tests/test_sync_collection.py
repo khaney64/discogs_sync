@@ -8,7 +8,15 @@ from click.testing import CliRunner
 
 from discogs_sync.cli import main
 from discogs_sync.models import CollectionItem, InputRecord, SyncActionType
-from discogs_sync.sync_collection import sync_collection, add_to_collection, remove_from_collection
+from discogs_sync.sync_collection import (
+    _add_instance,
+    _copy_instance_metadata,
+    _find_instance,
+    add_to_collection,
+    remove_from_collection,
+    replace_in_collection,
+    sync_collection,
+)
 
 
 class TestSyncCollection:
@@ -500,3 +508,223 @@ class TestCollectionCacheInvalidation:
         assert result.exit_code == 2
         mock_remove.assert_not_called()
         mock_invalidate.assert_not_called()
+
+
+def _instance_item(release_id, instance_id, folder_id=1, rating=0, notes=None, title="The Dreaming"):
+    item = MagicMock()
+    item.data = {
+        "id": release_id, "instance_id": instance_id, "folder_id": folder_id,
+        "rating": rating, "notes": notes or [],
+        "basic_information": {"title": title, "artists": [{"name": "Kate Bush"}]},
+    }
+    return item
+
+
+def _collection_client(items):
+    client = MagicMock()
+    client._base_url = "https://api.discogs.com"
+    me = client.identity.return_value
+    me.username = "khaney"
+    me.collection_folders.__getitem__.return_value.releases.page.side_effect = lambda p: items if p == 1 else []
+    return client
+
+
+OLD_INSTANCE = {
+    "release_id": 9697557, "instance_id": 2124303711, "folder_id": 1, "rating": 3,
+    "notes": [{"field_id": 1, "value": "Near Mint (NM or M-)"}, {"field_id": 3, "value": "Small seam split"}],
+    "artist": "Kate Bush", "title": "The Dreaming",
+}
+NEW_RELEASE = {"release_id": 29576638, "artist": "Kate Bush", "title": "The Dreaming (The Escapologist Edition)"}
+
+
+@patch("discogs_sync.sync_collection._remove_from_collection")
+@patch("discogs_sync.sync_collection._copy_instance_metadata")
+@patch("discogs_sync.sync_collection._add_instance", return_value=555)
+@patch("discogs_sync.sync_collection._describe_remote_release", return_value=NEW_RELEASE)
+@patch("discogs_sync.sync_collection._find_instance", return_value=OLD_INSTANCE)
+class TestReplaceInCollection:
+    def test_unconfirmed_previews_without_changes(self, _find, _describe, mock_add, mock_copy, mock_remove):
+        from discogs_sync.exceptions import ConfirmationRequiredError
+
+        with pytest.raises(ConfirmationRequiredError) as exc:
+            replace_in_collection(MagicMock(), 29576638, old_release_id=9697557)
+
+        preview = exc.value.preview
+        assert preview["action"] == "replace"
+        assert preview["old"]["instance_id"] == 2124303711
+        assert preview["new"]["release_id"] == 29576638
+        assert preview["notes"] == OLD_INSTANCE["notes"]
+        assert preview["rating"] == 3
+        mock_add.assert_not_called()
+        mock_copy.assert_not_called()
+        mock_remove.assert_not_called()
+
+    def test_confirmed_adds_copies_then_removes(self, _find, _describe, mock_add, mock_copy, mock_remove):
+        calls = MagicMock()
+        calls.attach_mock(mock_add, "add")
+        calls.attach_mock(mock_copy, "copy")
+        calls.attach_mock(mock_remove, "remove")
+
+        actions = replace_in_collection(MagicMock(), 29576638, instance_id=2124303711, confirm=True)
+
+        assert [c[0] for c in calls.mock_calls] == ["add", "copy", "remove"]
+        assert mock_add.call_args.args[1:3] == (29576638, 1)
+        assert mock_copy.call_args.args[1:6] == (1, 29576638, 555, 3, OLD_INSTANCE["notes"])
+        assert mock_remove.call_args.args[1:3] == (9697557, 2124303711)
+        assert [a.action for a in actions] == [SyncActionType.ADD, SyncActionType.REMOVE]
+        assert actions[0].release_id == 29576638
+        assert actions[1].release_id == 9697557
+
+    def test_copy_failure_keeps_old_instance(self, _find, _describe, mock_add, mock_copy, mock_remove):
+        from discogs_sync.exceptions import SyncError
+
+        mock_copy.side_effect = RuntimeError("boom")
+
+        with pytest.raises(SyncError, match="NOT removed"):
+            replace_in_collection(MagicMock(), 29576638, instance_id=2124303711, confirm=True)
+
+        mock_remove.assert_not_called()
+
+    def test_same_release_refused(self, _find, _describe, mock_add, mock_copy, mock_remove):
+        from discogs_sync.exceptions import SyncError
+
+        with pytest.raises(SyncError, match="already release"):
+            replace_in_collection(MagicMock(), 9697557, instance_id=2124303711, confirm=True)
+
+        mock_add.assert_not_called()
+
+
+class TestFindInstance:
+    def test_by_release_id_drops_empty_notes(self):
+        client = _collection_client([
+            _instance_item(111, 1, rating=4, notes=[{"field_id": 1, "value": "Mint (M)"}, {"field_id": 3, "value": ""}]),
+            _instance_item(222, 2),
+        ])
+
+        found = _find_instance(client, MagicMock(), release_id=111)
+
+        assert found["instance_id"] == 1
+        assert found["rating"] == 4
+        assert found["notes"] == [{"field_id": 1, "value": "Mint (M)"}]
+        assert found["artist"] == "Kate Bush"
+
+    def test_by_instance_id(self):
+        client = _collection_client([_instance_item(111, 1), _instance_item(111, 2, folder_id=7)])
+
+        found = _find_instance(client, MagicMock(), instance_id=2)
+
+        assert found["instance_id"] == 2
+        assert found["folder_id"] == 7
+
+    def test_multiple_copies_requires_instance_id(self):
+        from discogs_sync.exceptions import SyncError
+
+        client = _collection_client([_instance_item(111, 1), _instance_item(111, 2)])
+
+        with pytest.raises(SyncError, match="--instance-id"):
+            _find_instance(client, MagicMock(), release_id=111)
+
+    def test_not_in_collection(self):
+        from discogs_sync.exceptions import SyncError
+
+        with pytest.raises(SyncError, match="not in the collection"):
+            _find_instance(_collection_client([]), MagicMock(), release_id=111)
+
+
+class TestInstanceWrites:
+    def test_add_instance_returns_new_instance_id(self):
+        client = _collection_client([])
+        client._post.return_value = {"instance_id": 999, "resource_url": "..."}
+
+        assert _add_instance(client, 29576638, 1, MagicMock()) == 999
+        client._post.assert_called_once_with(
+            "https://api.discogs.com/users/khaney/collection/folders/1/releases/29576638", None,
+        )
+
+    def test_copy_metadata_sets_rating_and_fields(self):
+        client = _collection_client([])
+        notes = [{"field_id": 1, "value": "Very Good Plus (VG+)"}]
+
+        _copy_instance_metadata(client, 1, 29576638, 999, 3, notes, MagicMock())
+
+        base = "https://api.discogs.com/users/khaney/collection/folders/1/releases/29576638/instances/999"
+        assert client._post.call_args_list[0].args == (base, {"rating": 3})
+        assert client._post.call_args_list[1].args == (f"{base}/fields/1?value=Very+Good+Plus+%28VG%2B%29", None)
+
+    def test_copy_metadata_skips_zero_rating(self):
+        client = _collection_client([])
+
+        _copy_instance_metadata(client, 1, 29576638, 999, 0, [], MagicMock())
+
+        client._post.assert_not_called()
+
+
+class TestCollectionReplaceCli:
+    @patch("discogs_sync.cache.invalidate_cache")
+    @patch("discogs_sync.sync_collection._remove_from_collection")
+    @patch("discogs_sync.sync_collection._add_instance")
+    @patch("discogs_sync.sync_collection._describe_remote_release", return_value=NEW_RELEASE)
+    @patch("discogs_sync.sync_collection._find_instance", return_value=OLD_INSTANCE)
+    @patch("discogs_sync.client_factory.build_client")
+    def test_without_yes_exits_2_with_preview(self, _client, _find, _describe, mock_add, mock_remove, mock_invalidate):
+        result = CliRunner().invoke(main, [
+            "collection", "replace", "--release-id", "29576638", "--old-release-id", "9697557",
+            "--output-format", "json",
+        ])
+
+        assert result.exit_code == 2
+        preview = json.loads(result.output[result.output.index("{"):])
+        assert preview["confirmation_required"] is True
+        assert preview["new"]["release_id"] == 29576638
+        mock_add.assert_not_called()
+        mock_remove.assert_not_called()
+        mock_invalidate.assert_not_called()
+
+    @patch("discogs_sync.cache.invalidate_cache")
+    @patch("discogs_sync.sync_collection.replace_in_collection")
+    @patch("discogs_sync.client_factory.build_client")
+    def test_with_yes_confirms_and_invalidates_cache(self, _client, mock_replace, mock_invalidate):
+        from discogs_sync.models import SyncAction
+        mock_replace.return_value = [
+            SyncAction(action=SyncActionType.ADD, release_id=29576638),
+            SyncAction(action=SyncActionType.REMOVE, release_id=9697557),
+        ]
+
+        result = CliRunner().invoke(main, [
+            "collection", "replace", "--release-id", "29576638", "--instance-id", "2124303711", "--yes",
+        ])
+
+        assert result.exit_code == 0
+        assert mock_replace.call_args.kwargs["confirm"] is True
+        assert mock_replace.call_args.kwargs["instance_id"] == 2124303711
+        mock_invalidate.assert_called_once_with("collection")
+
+    def test_requires_old_identifier(self):
+        result = CliRunner().invoke(main, ["collection", "replace", "--release-id", "29576638"])
+        assert result.exit_code == 2
+
+    @patch("discogs_sync.cache.invalidate_cache")
+    @patch("discogs_sync.sync_collection.replace_in_collection")
+    @patch("discogs_sync.client_factory.build_client")
+    def test_partial_failure_exits_2_and_invalidates_cache(self, _client, mock_replace, mock_invalidate):
+        from discogs_sync.exceptions import SyncError
+        mock_replace.side_effect = SyncError("copying rating/notes failed. The old instance 1 was NOT removed.")
+
+        result = CliRunner().invoke(main, [
+            "collection", "replace", "--release-id", "29576638", "--instance-id", "1", "--yes",
+        ])
+
+        assert result.exit_code == 2
+        mock_invalidate.assert_called_once_with("collection")
+
+
+def test_describe_remote_release_fetches_full_release():
+    from discogs_sync.sync_collection import _describe_remote_release
+
+    client = MagicMock()
+    client.release.return_value.data = {"title": "The Dreaming", "artists": [{"name": "Kate Bush"}]}
+
+    assert _describe_remote_release(client, 29576638, MagicMock()) == {
+        "release_id": 29576638, "artist": "Kate Bush", "title": "The Dreaming",
+    }
+    client.release.return_value.refresh.assert_called_once()
