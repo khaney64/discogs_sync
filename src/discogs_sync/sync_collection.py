@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from urllib.parse import urlencode
 
 from discogs_client.models import CollectionItemInstance
 
@@ -637,8 +636,8 @@ def _copy_instance_metadata(client, folder_id: int, release_id: int, instance_id
     if rating:
         _api_call_with_retry(lambda: client._post(instance_url, {"rating": rating}), limiter)
     for note in notes:
-        url = f"{instance_url}/fields/{note['field_id']}?{urlencode({'value': note['value']})}"
-        _api_call_with_retry(lambda u=url: client._post(u, None), limiter)
+        url = f"{instance_url}/fields/{note['field_id']}"
+        _api_call_with_retry(lambda u=url, v=note["value"]: client._post(u, {"value": v}), limiter)
 
 
 def _remove_from_collection(client, release_id: int, instance_id: int, folder_id: int, limiter) -> None:

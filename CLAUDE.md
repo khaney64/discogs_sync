@@ -99,7 +99,7 @@ Collection differs from wantlist: uses folder_id (default 1 for adds, 0 for read
 
 `replace_in_collection()` swaps an instance to a different release (Discogs has no endpoint to change an instance's release). `_find_instance()` locates the old instance in folder 0 by `instance_id`, or by release_id when exactly one copy is owned, capturing its real `folder_id`, `rating`, and non-empty `notes` (custom fields: Media Condition, Sleeve Condition, Notes). Unconfirmed, it raises `ConfirmationRequiredError` with an old/new preview. Confirmed, it runs add → copy → remove:
 - `_add_instance()` posts via `client._post` directly because `CollectionFolder.add_release()` discards the response's `instance_id`. Not retried, to avoid duplicate adds.
-- `_copy_instance_metadata()` posts the rating to the instance URL and each field to `.../instances/{id}/fields/{field_id}?value=...` (the API takes the value as a query param).
+- `_copy_instance_metadata()` posts the rating to the instance URL and each field to `.../instances/{id}/fields/{field_id}` with a JSON body `{"value": ...}` (the API docs show a `?value=` query param, but that returns 422).
 - If copying fails, raises `SyncError` and the old instance is **not** removed.
 
 Folder URLs are built from `client._base_url` + username rather than `me.collection_folders[folder_id]`, which indexes by list position, not folder id.

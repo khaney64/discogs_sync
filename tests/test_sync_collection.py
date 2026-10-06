@@ -649,7 +649,7 @@ class TestInstanceWrites:
 
         base = "https://api.discogs.com/users/khaney/collection/folders/1/releases/29576638/instances/999"
         assert client._post.call_args_list[0].args == (base, {"rating": 3})
-        assert client._post.call_args_list[1].args == (f"{base}/fields/1?value=Very+Good+Plus+%28VG%2B%29", None)
+        assert client._post.call_args_list[1].args == (f"{base}/fields/1", {"value": "Very Good Plus (VG+)"})
 
     def test_copy_metadata_skips_zero_rating(self):
         client = _collection_client([])
