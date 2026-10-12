@@ -33,6 +33,9 @@ if TYPE_CHECKING:
 DEFAULT_ADD_FOLDER = 1   # "Uncategorized"
 DEFAULT_READ_FOLDER = 0  # "All"
 FUZZY_MATCH_THRESHOLD = 0.85
+MEDIA_CONDITION_FIELD = "Media Condition"
+SLEEVE_CONDITION_FIELD = "Sleeve Condition"
+NOTES_FIELD = "Notes"
 
 
 def sync_collection(
@@ -397,6 +400,59 @@ def replace_in_collection(
     ]
 
 
+def edit_collection_instance(
+    client: discogs_client.Client,
+    instance_id: int | None = None,
+    release_id: int | None = None,
+    rating: int | None = None,
+    media_condition: str | None = None,
+    sleeve_condition: str | None = None,
+    notes: str | None = None,
+) -> dict:
+    """Set the rating and/or custom fields (media/sleeve condition, notes) of one collection instance.
+
+    Fields are looked up by name in the user's collection field definitions, and
+    dropdown values accept the option text or its abbreviation ("VG+", "NM").
+    Only values that differ are written. Returns the instance and a list of
+    {field, old, new} changes; the old values make an overwrite recoverable.
+    """
+    limiter = get_rate_limiter()
+    target = _find_instance(client, limiter, instance_id=instance_id, release_id=release_id)
+
+    current = {n["field_id"]: n["value"] for n in target["notes"]}
+    fields = _collection_fields(client, limiter)
+    requested = [(name, value) for name, value in (
+        (MEDIA_CONDITION_FIELD, media_condition),
+        (SLEEVE_CONDITION_FIELD, sleeve_condition),
+        (NOTES_FIELD, notes),
+    ) if value is not None]
+
+    field_writes = []
+    for name, value in requested:
+        field = fields.get(name.lower())
+        if field is None:
+            raise SyncError(f"Collection has no '{name}' field. No changes were made.")
+        if field.get("type") == "dropdown" and value:
+            value = _resolve_field_option(value, field)
+        if current.get(field["id"], "") != value:
+            field_writes.append((field, value))
+
+    changes = []
+    instance_url = _instance_url(client, target["folder_id"], target["release_id"], target["instance_id"], limiter)
+    if rating is not None and rating != target["rating"]:
+        _api_call_with_retry(lambda: client._post(instance_url, {"rating": rating}), limiter)
+        changes.append({"field": "Rating", "old": target["rating"], "new": rating})
+    for field, value in field_writes:
+        url = f"{instance_url}/fields/{field['id']}"
+        _api_call_with_retry(lambda u=url, v=value: client._post(u, {"value": v}), limiter)
+        changes.append({"field": field["name"], "old": current.get(field["id"], ""), "new": value})
+
+    return {
+        **{k: target[k] for k in ("release_id", "instance_id", "folder_id", "artist", "title")},
+        "changes": changes,
+    }
+
+
 def list_collection(
     client: discogs_client.Client,
     folder_id: int = DEFAULT_READ_FOLDER,
@@ -630,9 +686,34 @@ def _add_instance(client, release_id: int, folder_id: int, limiter) -> int:
     return response["instance_id"]
 
 
+def _instance_url(client, folder_id: int, release_id: int, instance_id: int, limiter) -> str:
+    return f"{_folder_url(client, folder_id, limiter)}/releases/{release_id}/instances/{instance_id}"
+
+
+def _collection_fields(client, limiter) -> dict[str, dict]:
+    """The user's custom collection fields, keyed by lowercase name."""
+    me = _api_call_with_retry(lambda: client.identity(), limiter)
+    url = f"{client._base_url}/users/{me.username}/collection/fields"
+    response = _api_call_with_retry(lambda: client._get(url), limiter)
+    return {f["name"].lower(): f for f in response.get("fields", [])}
+
+
+def _resolve_field_option(value: str, field: dict) -> str:
+    """Match a dropdown value by full text, name ("Very Good Plus") or abbreviation ("VG+", "NM", "M-")."""
+    wanted = value.strip().lower()
+    for option in field.get("options", []):
+        name, _, abbrev = option.partition("(")
+        aliases = {option.lower(), name.strip().lower()}
+        aliases.update(a.strip().lower() for a in abbrev.rstrip(")").split(" or ") if a.strip())
+        if wanted in aliases:
+            return option
+    choices = ", ".join(field.get("options", []))
+    raise SyncError(f"'{value}' is not a valid {field['name']}. Choose from: {choices}. No changes were made.")
+
+
 def _copy_instance_metadata(client, folder_id: int, release_id: int, instance_id: int, rating: int, notes: list[dict], limiter) -> None:
     """Set rating and custom field values (media/sleeve condition, notes) on an instance."""
-    instance_url = f"{_folder_url(client, folder_id, limiter)}/releases/{release_id}/instances/{instance_id}"
+    instance_url = _instance_url(client, folder_id, release_id, instance_id, limiter)
     if rating:
         _api_call_with_retry(lambda: client._post(instance_url, {"rating": rating}), limiter)
     for note in notes:

@@ -233,6 +233,25 @@ def output_runout_matches(matches: list, output_format: str = "table") -> None:
     console.print(f"\nTotal: {len(matches)}")
 
 
+def output_instance_edit(result: dict, output_format: str = "table") -> None:
+    """Output the changes made to one collection instance."""
+    if output_format == "json":
+        output_json(result)
+        return
+
+    heading = f"{result['artist']} - {result['title']} (release {result['release_id']}, instance {result['instance_id']})"
+    if not result["changes"]:
+        console.print(f"{heading}: no changes (values already set)")
+        return
+    table = Table(title=heading)
+    table.add_column("Field")
+    table.add_column("Before")
+    table.add_column("After")
+    for change in result["changes"]:
+        table.add_row(change["field"], str(change["old"]), str(change["new"]))
+    console.print(table)
+
+
 def output_user_info(username: str, output_format: str = "table") -> None:
     """Output authenticated user info."""
     if output_format == "json":

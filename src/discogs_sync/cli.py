@@ -385,6 +385,42 @@ def collection_replace(new_release_id, instance_id, old_release_id, confirm, out
         sys.exit(2)
 
 
+@collection.command("edit")
+@click.option("--instance-id", type=int, help="Collection instance to edit")
+@click.option("--release-id", type=int, help="Release in the collection (when only one copy is owned)")
+@click.option("--rating", type=click.IntRange(0, 5), help="Rating 1-5 (0 clears it)")
+@click.option("--media-condition", help='Media grade, e.g. "Near Mint (NM or M-)", "NM", "VG+"')
+@click.option("--sleeve-condition", help='Sleeve grade, e.g. "VG+", "Generic", "No Cover"')
+@click.option("--notes", help='Free-text notes; replaces existing notes ("" clears them)')
+@click.option("--output-format", type=click.Choice(["table", "json"]), default="table")
+def collection_edit(instance_id, release_id, rating, media_condition, sleeve_condition, notes, output_format):
+    """Set a collection entry's rating, media/sleeve condition, or notes."""
+    from .client_factory import build_client
+    from .output import output_instance_edit, print_error
+    from .sync_collection import edit_collection_instance
+
+    if not instance_id and not release_id:
+        print_error("Provide --instance-id or --release-id")
+        sys.exit(2)
+    if all(v is None for v in (rating, media_condition, sleeve_condition, notes)):
+        print_error("Provide at least one of --rating, --media-condition, --sleeve-condition, --notes")
+        sys.exit(2)
+
+    try:
+        client = build_client()
+        result = edit_collection_instance(
+            client, instance_id=instance_id, release_id=release_id, rating=rating,
+            media_condition=media_condition, sleeve_condition=sleeve_condition, notes=notes,
+        )
+        output_instance_edit(result, output_format)
+    except DiscogsSyncError as e:
+        print_error(str(e))
+        sys.exit(2)
+    finally:
+        from .cache import invalidate_cache
+        invalidate_cache("collection")
+
+
 @collection.command("list")
 @click.option("--search", default=None, help="Filter by artist or title (case-insensitive)")
 @click.option("--format", "fmt", default=None, help="Filter by format (e.g., Vinyl, CD, Cassette)")

@@ -120,6 +120,10 @@ discogs-sync collection remove --release-id 7890 [--yes]
 discogs-sync collection replace --release-id 29576638 --old-release-id 9697557 [--yes]
 discogs-sync collection replace --release-id 29576638 --instance-id 2124303711 [--yes]
 
+# Set an entry's rating, condition grades, or notes (grades accept abbreviations like NM, VG+)
+discogs-sync collection edit --instance-id 2193329280 [--rating 4] [--media-condition NM] [--sleeve-condition "VG+"] [--notes "..."]
+discogs-sync collection edit --release-id 8858783 --notes "Matrix engraved over 1-23771"
+
 # List collection
 discogs-sync collection list [--folder-id 0] [--search "miles"] [--no-cache] [--output-format json]
 ```

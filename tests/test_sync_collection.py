@@ -12,7 +12,9 @@ from discogs_sync.sync_collection import (
     _add_instance,
     _copy_instance_metadata,
     _find_instance,
+    _resolve_field_option,
     add_to_collection,
+    edit_collection_instance,
     remove_from_collection,
     replace_in_collection,
     sync_collection,
@@ -728,3 +730,148 @@ def test_describe_remote_release_fetches_full_release():
         "release_id": 29576638, "artist": "Kate Bush", "title": "The Dreaming",
     }
     client.release.return_value.refresh.assert_called_once()
+
+
+COLLECTION_FIELDS = {"fields": [
+    {"id": 1, "name": "Media Condition", "type": "dropdown",
+     "options": ["Mint (M)", "Near Mint (NM or M-)", "Very Good Plus (VG+)", "Very Good (VG)"]},
+    {"id": 2, "name": "Sleeve Condition", "type": "dropdown",
+     "options": ["Generic", "No Cover", "Near Mint (NM or M-)", "Very Good Plus (VG+)", "Very Good (VG)"]},
+    {"id": 3, "name": "Notes", "type": "textarea", "lines": 3},
+]}
+
+
+def _edit_client(items):
+    client = _collection_client(items)
+    client._get.return_value = COLLECTION_FIELDS
+    return client
+
+
+class TestResolveFieldOption:
+    FIELD = COLLECTION_FIELDS["fields"][1]
+
+    @pytest.mark.parametrize("value", ["Near Mint (NM or M-)", "near mint", "NM", "m-", " nm "])
+    def test_accepts_text_name_and_abbreviations(self, value):
+        assert _resolve_field_option(value, self.FIELD) == "Near Mint (NM or M-)"
+
+    def test_option_without_abbreviation(self):
+        assert _resolve_field_option("generic", self.FIELD) == "Generic"
+
+    def test_unknown_value_lists_choices(self):
+        from discogs_sync.exceptions import SyncError
+
+        with pytest.raises(SyncError, match="Choose from: Generic"):
+            _resolve_field_option("Excellent", self.FIELD)
+
+
+class TestEditCollectionInstance:
+    BASE = "https://api.discogs.com/users/khaney/collection/folders/1/releases/111/instances/1"
+
+    def test_writes_rating_and_fields(self):
+        client = _edit_client([_instance_item(111, 1)])
+
+        result = edit_collection_instance(
+            client, instance_id=1, rating=4, media_condition="VG+", sleeve_condition="vg", notes="Matrix re-engraved",
+        )
+
+        assert [c.args for c in client._post.call_args_list] == [
+            (self.BASE, {"rating": 4}),
+            (f"{self.BASE}/fields/1", {"value": "Very Good Plus (VG+)"}),
+            (f"{self.BASE}/fields/2", {"value": "Very Good (VG)"}),
+            (f"{self.BASE}/fields/3", {"value": "Matrix re-engraved"}),
+        ]
+        assert result["instance_id"] == 1
+        assert result["changes"][0] == {"field": "Rating", "old": 0, "new": 4}
+        assert result["changes"][3] == {"field": "Notes", "old": "", "new": "Matrix re-engraved"}
+
+    def test_reports_old_values_and_skips_unchanged(self):
+        client = _edit_client([_instance_item(111, 1, rating=3, notes=[
+            {"field_id": 1, "value": "Near Mint (NM or M-)"}, {"field_id": 3, "value": "Old note"},
+        ])])
+
+        result = edit_collection_instance(client, release_id=111, rating=3, media_condition="NM", notes="New note")
+
+        client._post.assert_called_once_with(f"{self.BASE}/fields/3", {"value": "New note"})
+        assert result["changes"] == [{"field": "Notes", "old": "Old note", "new": "New note"}]
+
+    def test_empty_notes_clears(self):
+        client = _edit_client([_instance_item(111, 1, notes=[{"field_id": 3, "value": "Old note"}])])
+
+        edit_collection_instance(client, instance_id=1, notes="")
+
+        client._post.assert_called_once_with(f"{self.BASE}/fields/3", {"value": ""})
+
+    def test_invalid_grade_writes_nothing(self):
+        from discogs_sync.exceptions import SyncError
+
+        client = _edit_client([_instance_item(111, 1)])
+
+        with pytest.raises(SyncError, match="not a valid Media Condition"):
+            edit_collection_instance(client, instance_id=1, rating=5, media_condition="Excellent")
+
+        client._post.assert_not_called()
+
+    def test_missing_field_definition(self):
+        from discogs_sync.exceptions import SyncError
+
+        client = _collection_client([_instance_item(111, 1)])
+        client._get.return_value = {"fields": []}
+
+        with pytest.raises(SyncError, match="no 'Notes' field"):
+            edit_collection_instance(client, instance_id=1, notes="x")
+
+
+class TestCollectionEditCli:
+    @patch("discogs_sync.cache.invalidate_cache")
+    @patch("discogs_sync.sync_collection.edit_collection_instance")
+    @patch("discogs_sync.client_factory.build_client")
+    def test_json_output_and_cache_invalidation(self, _client, mock_edit, mock_invalidate):
+        mock_edit.return_value = {
+            "release_id": 111, "instance_id": 1, "folder_id": 1, "artist": "Kate Bush", "title": "The Dreaming",
+            "changes": [{"field": "Notes", "old": "", "new": "hi"}],
+        }
+
+        result = CliRunner().invoke(main, [
+            "collection", "edit", "--instance-id", "1", "--notes", "hi", "--output-format", "json",
+        ])
+
+        assert result.exit_code == 0
+        assert json.loads(result.output)["changes"][0]["new"] == "hi"
+        assert mock_edit.call_args.kwargs["notes"] == "hi"
+        assert mock_edit.call_args.kwargs["rating"] is None
+        mock_invalidate.assert_called_once_with("collection")
+
+    @patch("discogs_sync.sync_collection.edit_collection_instance")
+    @patch("discogs_sync.client_factory.build_client")
+    def test_table_output_with_no_changes(self, _client, mock_edit):
+        mock_edit.return_value = {
+            "release_id": 111, "instance_id": 1, "folder_id": 1, "artist": "Kate Bush", "title": "The Dreaming",
+            "changes": [],
+        }
+
+        result = CliRunner().invoke(main, ["collection", "edit", "--release-id", "111", "--rating", "3"])
+
+        assert result.exit_code == 0
+        assert "no changes" in result.output
+
+    @patch("discogs_sync.sync_collection.edit_collection_instance")
+    @patch("discogs_sync.client_factory.build_client")
+    def test_error_exits_2(self, _client, mock_edit):
+        from discogs_sync.exceptions import SyncError
+        mock_edit.side_effect = SyncError("'Excellent' is not a valid Media Condition")
+
+        result = CliRunner().invoke(main, ["collection", "edit", "--instance-id", "1", "--media-condition", "Excellent"])
+
+        assert result.exit_code == 2
+
+    def test_requires_target(self):
+        result = CliRunner().invoke(main, ["collection", "edit", "--notes", "x"])
+        assert result.exit_code == 2
+
+    def test_requires_a_change(self):
+        result = CliRunner().invoke(main, ["collection", "edit", "--instance-id", "1"])
+        assert result.exit_code == 2
+
+    def test_rating_out_of_range(self):
+        result = CliRunner().invoke(main, ["collection", "edit", "--instance-id", "1", "--rating", "6"])
+        assert result.exit_code == 2

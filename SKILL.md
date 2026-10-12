@@ -153,6 +153,15 @@ python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py colle
 
 Discogs can't change which release a collection entry points to, so `replace` adds the new release to the old entry's folder, copies its rating and custom fields (Media Condition, Sleeve Condition, Notes), then removes the old entry. If copying fails, the old entry is kept and the error says so. Always use `replace` rather than `add` + `remove` when correcting a pressing — a plain `remove` discards the condition grades.
 
+### Collection — Edit Rating, Condition, and Notes
+
+```bash
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection edit --instance-id 2193329280 --media-condition NM --sleeve-condition "VG+" [--rating 4] [--output-format json]
+python3 /home/claw/.openclaw/workspace/skills/discogs_sync/discogs-sync.py collection edit --release-id 8858783 --notes "Matrix engraved over 1-23771"
+```
+
+Sets a collection entry's rating (1–5, `0` clears) and custom fields, looked up by name: Media Condition, Sleeve Condition (dropdowns; accept the full option, its name, or its abbreviation such as `NM`, `M-`, `VG+`, `Generic`), and Notes (free text; replaces existing notes, `""` clears). Use `--instance-id` when several copies are owned. Only differing values are written; the output lists each change with its old and new value, so an overwritten note can be restored. Invalid grades are rejected with the valid choices and nothing is written.
+
 ### Release — Identify a Pressing by Runout
 
 ```bash
@@ -247,8 +256,11 @@ Format synonyms are normalized automatically: `LP`/`record`/`12"` → Vinyl, `co
 | `--remove-extras` | sync | Remove wantlist/collection items not in the input file (requires `--dry-run` or `--yes`) |
 | `--yes` | remove, replace, sync | Confirm a removal (`remove`, `replace`, or `sync --remove-extras`). Without it, the command previews what would be removed, exits 2, and makes no changes |
 | `--runout` | release identify | Matrix/runout etching; repeat once per side |
-| `--instance-id` | collection replace | Collection entry to replace |
+| `--instance-id` | collection replace, edit | Collection entry to replace or edit |
 | `--old-release-id` | collection replace | Release currently in the collection (when only one copy is owned) |
+| `--rating` | collection edit | Rating 1–5 (`0` clears) |
+| `--media-condition` / `--sleeve-condition` | collection edit | Condition grade: full option text or abbreviation (`NM`, `VG+`, `Generic`, `No Cover`) |
+| `--notes` | collection edit | Free-text notes; replaces existing notes (`""` clears) |
 | `--limit` | release identify | Max matches to show (default: 5) |
 | `--max-candidates` | release identify | Max candidate releases to fetch and score (default: 25) |
 
